@@ -77,7 +77,7 @@ Create a complete engineering foundation before writing production code.
 
 # Phase 1 — Foundation
 
-**Status:** Closeout in progress
+**Status:** Complete
 
 ## Goal
 
@@ -119,7 +119,7 @@ No business workflows are implemented yet.
 * Database migrations work
 * Docker environment is reproducible
 
-## Closeout Notes
+## Completion Notes
 
 Infrastructure/database work is complete:
 
@@ -128,7 +128,7 @@ Infrastructure/database work is complete:
 * Prisma Client generation verified.
 * Prisma Studio verified.
 
-Remaining closeout is application-level:
+Application-level closeout is complete:
 
 * Better Auth sign-up, sign-in, sign-out.
 * Session persistence.
@@ -140,6 +140,8 @@ Remaining closeout is application-level:
 ---
 
 # Phase 2 — Master Data
+
+**Status:** In progress
 
 ## Goal
 

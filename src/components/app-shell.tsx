@@ -27,10 +27,12 @@ import { ThemeToggle } from "./theme-toggle";
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Products", href: "/products", icon: Package },
+  { name: "Categories", href: "/categories", icon: Boxes },
   { name: "Inventory", href: "/inventory", icon: Boxes },
   { name: "Purchasing", href: "/purchasing", icon: ClipboardList },
   { name: "Suppliers", href: "/suppliers", icon: Truck },
   { name: "Customers", href: "/customers", icon: Users },
+  { name: "Units", href: "/units", icon: ClipboardList },
   { name: "Invoices", href: "/invoices", icon: ReceiptText },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Warehouses", href: "/warehouses", icon: Warehouse },

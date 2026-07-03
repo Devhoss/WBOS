@@ -1,10 +1,25 @@
-import { PhasePlaceholderPage } from "@/components/phase-placeholder-page";
+import { AppShell } from "@/components/app-shell";
+import { BusinessSettingsService } from "@/domains/settings/services/business-settings-service";
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
-export default function SettingsPage() {
+import { SettingsForm } from "./settings-form";
+
+export default async function SettingsPage() {
+  const context = await new AuthenticatedRequestContextService().getCurrentContext();
+  const settings = await new BusinessSettingsService().getForContext(context);
+
   return (
-    <PhasePlaceholderPage
-      title="Settings"
-      description="Business settings are modeled in the database foundation and will get management screens as workflows mature."
-    />
+    <AppShell>
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="border-b pb-6">
+          <h1 className="text-2xl font-semibold tracking-normal">Business Settings</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            Manage organization-wide defaults used by future documents, workflows, and reports.
+          </p>
+        </div>
+
+        <SettingsForm settings={settings} />
+      </div>
+    </AppShell>
   );
 }

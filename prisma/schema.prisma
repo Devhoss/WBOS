@@ -35,6 +35,13 @@ enum StorageProvider {
   LOCAL
 }
 
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  DISCONTINUED
+  ARCHIVED
+}
+
 model User {
   id            String   @id
   name          String
@@ -114,8 +121,159 @@ model Organization {
   activityLogs      ActivityLog[]
   attachments       Attachment[]
   documentSequences DocumentSequence[]
+  warehouses        Warehouse[]
+  categories        Category[]
+  suppliers         Supplier[]
+  customers         Customer[]
+  unitsOfMeasure    UnitOfMeasure[]
+  products          Product[]
 
   @@map("organizations")
+}
+
+model Product {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  categoryId          String
+  supplierId          String?
+  unitOfMeasureId     String
+  sku                 String
+  barcode             String?
+  name                String
+  description         String?
+  status              ProductStatus @default(DRAFT)
+  defaultSellingPrice Decimal?      @db.Decimal(18, 3)
+  defaultCurrency     CurrencyCode  @default(KWD)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  archivedAt          DateTime?
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category      Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
+  @@index([organizationId, sku])
+  @@index([organizationId, barcode])
+  @@index([organizationId, name])
+  @@index([organizationId, status])
+  @@index([organizationId, archivedAt])
+  @@index([categoryId])
+  @@index([supplierId])
+  @@map("products")
+}
+
+model UnitOfMeasure {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  name               String
+  code               String
+  description        String?
+  isBaseUnit         Boolean  @default(false)
+  conversionToBase   Decimal  @default(1) @db.Decimal(18, 6)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  archivedAt         DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, code])
+  @@index([organizationId, archivedAt])
+  @@map("units_of_measure")
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  code           String?
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  paymentTerms   String?
+  creditLimit    Decimal? @db.Decimal(18, 3)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, code])
+  @@index([organizationId, archivedAt])
+  @@map("customers")
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  code           String?
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  paymentTerms   String?
+  leadTimeDays   Int?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, code])
+  @@index([organizationId, archivedAt])
+  @@map("suppliers")
+}
+
+model Category {
+  id             String    @id @default(cuid())
+  organizationId String
+  parentId       String?
+  name           String
+  code           String?
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Category?    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Category[]   @relation("CategoryHierarchy")
+  products     Product[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, code])
+  @@index([organizationId, archivedAt])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Warehouse {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  address        String?
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, archivedAt])
+  @@map("warehouses")
 }
 
 model OrganizationMembership {
