@@ -1,21 +1,41 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: wbos-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: wbos
-      POSTGRES_PASSWORD: wbos
-      POSTGRES_DB: wbos
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wbos -d wbos"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  app:
+    image: wbos:latest
 
-volumes:
-  postgres_data:
+    container_name: wbos-app
+
+    restart: unless-stopped
+
+    ports:
+      - "3005:3000"
+
+    env_file:
+      - .env
+
+    environment:
+      INTERNAL_APP_URL: http://127.0.0.1:3000
+      WBOS_STORAGE_ROOT: /app/storage
+
+    volumes:
+      - ./storage:/app/storage
+      - ./backups:/app/backups
+
+    networks:
+      - homelab
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  homelab:
+    external: true

@@ -1,12 +1,22 @@
+import type { Metadata } from "next";
+
 import { AppShell } from "@/components/app-shell";
 import { SupplierService } from "@/domains/suppliers/services/supplier-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
 import { SupplierForm } from "./supplier-form";
+import { SupplierTable } from "./supplier-table";
+
+export const metadata: Metadata = { title: "Suppliers" };
 
 export default async function SuppliersPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const suppliers = await new SupplierService().listActive(context);
+  const [active, all] = await Promise.all([
+    new SupplierService().listActive(context),
+    new SupplierService().listAll(context),
+  ]);
+
+  const archived = all.filter((s) => s.archivedAt);
 
   return (
     <AppShell>
@@ -20,31 +30,20 @@ export default async function SuppliersPage() {
 
         <SupplierForm />
 
-        <section className="rounded-lg border">
-          <div className="grid grid-cols-[1fr_120px_180px_120px] border-b px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-            <span>Name</span>
-            <span>Code</span>
-            <span>Contact</span>
-            <span>Lead Time</span>
-          </div>
-          {suppliers.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted-foreground">No suppliers have been created yet.</p>
-          ) : (
-            suppliers.map((supplier) => (
-              <div key={supplier.id} className="grid grid-cols-[1fr_120px_180px_120px] border-b px-4 py-3 text-sm last:border-b-0">
-                <div>
-                  <p className="font-medium">{supplier.name}</p>
-                  {supplier.email ? <p className="text-xs text-muted-foreground">{supplier.email}</p> : null}
-                </div>
-                <span className="text-muted-foreground">{supplier.code ?? "-"}</span>
-                <span className="text-muted-foreground">{supplier.contactName ?? supplier.phone ?? "-"}</span>
-                <span className="text-muted-foreground">
-                  {supplier.leadTimeDays === null ? "-" : `${supplier.leadTimeDays} days`}
-                </span>
-              </div>
-            ))
-          )}
-        </section>
+        <SupplierTable
+          suppliers={active.map((s) => ({
+            id: s.id, name: s.name, code: s.code ?? "", email: s.email ?? "",
+            contactName: s.contactName ?? "", phone: s.phone ?? "",
+            paymentTerms: s.paymentTerms ?? "", leadTimeDays: s.leadTimeDays,
+            address: s.address ?? "", notes: s.notes ?? "", archived: false,
+          }))}
+          archived={archived.map((s) => ({
+            id: s.id, name: s.name, code: s.code ?? "", email: s.email ?? "",
+            contactName: s.contactName ?? "", phone: s.phone ?? "",
+            paymentTerms: s.paymentTerms ?? "", leadTimeDays: s.leadTimeDays,
+            address: s.address ?? "", notes: s.notes ?? "", archived: true,
+          }))}
+        />
       </div>
     </AppShell>
   );

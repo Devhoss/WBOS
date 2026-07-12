@@ -4,9 +4,10 @@ import { auth } from "@/infrastructure/auth/auth";
 import { BusinessError } from "@/shared/errors/business-error";
 
 export class AuthSessionService {
-  async getRequiredSession() {
+  async getRequiredSession(overrideHeaders?: Headers) {
+    const hdrs = overrideHeaders ?? (await headers());
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: hdrs,
     });
 
     if (!session?.user.id) {

@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
+
 import { AppShell } from "@/components/app-shell";
 import { BusinessSettingsService } from "@/domains/settings/services/business-settings-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
 import { SettingsForm } from "./settings-form";
+
+export const metadata: Metadata = { title: "Business Settings" };
 
 export default async function SettingsPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();

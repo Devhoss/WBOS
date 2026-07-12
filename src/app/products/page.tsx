@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
+
 import { AppShell } from "@/components/app-shell";
+import { BarcodeLookup } from "@/components/barcode-lookup";
 import { CategoryService } from "@/domains/categories/services/category-service";
 import { ProductService } from "@/domains/products/services/product-service";
 import { SupplierService } from "@/domains/suppliers/services/supplier-service";
@@ -7,6 +10,8 @@ import { AuthenticatedRequestContextService } from "@/infrastructure/request/aut
 
 import { ProductForm } from "./product-form";
 import { ProductTable } from "./product-table";
+
+export const metadata: Metadata = { title: "Products" };
 
 export default async function ProductsPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
@@ -32,6 +37,8 @@ export default async function ProductsPage() {
           suppliers={suppliers.map((supplier) => ({ id: supplier.id, name: supplier.name, code: supplier.code }))}
           units={units.map((unit) => ({ id: unit.id, name: unit.name, code: unit.code }))}
         />
+
+        <BarcodeLookup />
 
         <ProductTable
           categories={categories.map((category) => ({ id: category.id, name: category.name, code: category.code }))}

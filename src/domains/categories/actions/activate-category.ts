@@ -1,0 +1,40 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { BusinessError } from "@/shared/errors/business-error";
+
+import { CategoryService } from "../services/category-service";
+import { activateCategorySchema } from "../validation/category-schema";
+
+export async function activateCategory(input: unknown) {
+  const parsed = activateCategorySchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  try {
+    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    requireMinimumRole(context, "MANAGER");
+
+    await new CategoryService().activate(context, parsed.data.id);
+    revalidatePath("/categories");
+
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof BusinessError) {
+      return {
+        ok: false,
+        message: error.message,
+      };
+    }
+
+    throw error;
+  }
+}

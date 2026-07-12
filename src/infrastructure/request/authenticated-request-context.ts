@@ -7,8 +7,8 @@ export class AuthenticatedRequestContextService {
     private readonly tenants = new TenantContextService(),
   ) {}
 
-  async getCurrentContext() {
-    const session = await this.authSessions.getRequiredSession();
+  async getCurrentContext(requestHeaders?: Headers) {
+    const session = await this.authSessions.getRequiredSession(requestHeaders);
     const tenant = await this.tenants.getRequiredTenantForUser(session.user.id);
 
     return {

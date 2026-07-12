@@ -9,7 +9,21 @@ export class ProductRepository {
     return prisma.product.findMany({
       where: {
         organizationId,
+        archivedAt: null,
+        status: { not: "ARCHIVED" },
       },
+      include: {
+        category: true,
+        supplier: true,
+        unitOfMeasure: true,
+      },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  async listAll(organizationId: string) {
+    return prisma.product.findMany({
+      where: { organizationId },
       include: {
         category: true,
         supplier: true,
@@ -45,6 +59,17 @@ export class ProductRepository {
       where: {
         id,
         organizationId,
+      },
+    });
+  }
+
+  async findActiveById(organizationId: string, id: string) {
+    return prisma.product.findFirst({
+      where: {
+        id,
+        organizationId,
+        archivedAt: null,
+        status: "ACTIVE",
       },
     });
   }

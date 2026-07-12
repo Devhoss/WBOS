@@ -1,12 +1,22 @@
+import type { Metadata } from "next";
+
 import { AppShell } from "@/components/app-shell";
 import { UnitOfMeasureService } from "@/domains/units/services/unit-of-measure-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
 import { UnitOfMeasureForm } from "./unit-of-measure-form";
+import { UnitTable } from "./unit-table";
+
+export const metadata: Metadata = { title: "Units of Measure" };
 
 export default async function UnitsPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const units = await new UnitOfMeasureService().listActive(context);
+  const [active, all] = await Promise.all([
+    new UnitOfMeasureService().listActive(context),
+    new UnitOfMeasureService().listAll(context),
+  ]);
+
+  const archived = all.filter((u) => u.archivedAt);
 
   return (
     <AppShell>
@@ -20,29 +30,16 @@ export default async function UnitsPage() {
 
         <UnitOfMeasureForm />
 
-        <section className="rounded-lg border">
-          <div className="grid grid-cols-[1fr_120px_180px_120px] border-b px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-            <span>Name</span>
-            <span>Code</span>
-            <span>Conversion</span>
-            <span>Status</span>
-          </div>
-          {units.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted-foreground">No units of measure have been created yet.</p>
-          ) : (
-            units.map((unit) => (
-              <div key={unit.id} className="grid grid-cols-[1fr_120px_180px_120px] border-b px-4 py-3 text-sm last:border-b-0">
-                <div>
-                  <p className="font-medium">{unit.name}</p>
-                  {unit.description ? <p className="text-xs text-muted-foreground">{unit.description}</p> : null}
-                </div>
-                <span className="text-muted-foreground">{unit.code}</span>
-                <span className="text-muted-foreground">{unit.conversionToBase.toString()}</span>
-                <span className="text-muted-foreground">{unit.isBaseUnit ? "Base" : "Active"}</span>
-              </div>
-            ))
-          )}
-        </section>
+        <UnitTable
+          units={active.map((u) => ({
+            id: u.id, name: u.name, code: u.code, description: u.description ?? "",
+            isBaseUnit: u.isBaseUnit, conversionToBase: u.conversionToBase.toString(), archived: false,
+          }))}
+          archived={archived.map((u) => ({
+            id: u.id, name: u.name, code: u.code, description: u.description ?? "",
+            isBaseUnit: u.isBaseUnit, conversionToBase: u.conversionToBase.toString(), archived: true,
+          }))}
+        />
       </div>
     </AppShell>
   );

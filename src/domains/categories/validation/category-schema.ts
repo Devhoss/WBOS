@@ -15,4 +15,17 @@ export const createCategorySchema = z.object({
   parentId: optionalText,
 });
 
+export const updateCategorySchema = createCategorySchema.extend({
+  id: z.string().trim().min(1, "Category is required."),
+});
+
+const categoryIdSchema = z.object({
+  id: z.string().trim().min(1, "Category is required."),
+});
+
+export const archiveCategorySchema = categoryIdSchema;
+export const activateCategorySchema = categoryIdSchema;
+export const deleteCategorySchema = categoryIdSchema;
+
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;

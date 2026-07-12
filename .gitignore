@@ -1,8 +1,32 @@
-.next/
+# Dependencies
 node_modules/
+
+# Next.js
+.next/
+out/
+
+# Build
 dist/
 coverage/
-.env
-.env*.local
-storage/
 *.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+storage/
+backups/
+
+# Docker
+*.tar
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

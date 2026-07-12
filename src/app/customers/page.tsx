@@ -1,12 +1,31 @@
+import type { Metadata } from "next";
+
 import { AppShell } from "@/components/app-shell";
 import { CustomerService } from "@/domains/customers/services/customer-service";
+import { CustomerBalanceService } from "@/domains/sales/services/customer-balance-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
 import { CustomerForm } from "./customer-form";
+import { CustomerTable } from "./customer-table";
+
+export const metadata: Metadata = { title: "Customers" };
 
 export default async function CustomersPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const customers = await new CustomerService().listActive(context);
+  const [active, all] = await Promise.all([
+    new CustomerService().listActive(context),
+    new CustomerService().listAll(context),
+  ]);
+
+  const archived = all.filter((c) => c.archivedAt);
+  const balanceService = new CustomerBalanceService();
+
+  const allCustomers = [...active, ...archived];
+  const balancePromises = allCustomers.map((c) =>
+    balanceService.getBalanceSummary(context.organizationId, c.id).then((b) => ({ customerId: c.id, ...b })),
+  );
+  const balances = await Promise.all(balancePromises);
+  const balanceMap = new Map(balances.map((b) => [b.customerId, b]));
 
   return (
     <AppShell>
@@ -20,31 +39,22 @@ export default async function CustomersPage() {
 
         <CustomerForm />
 
-        <section className="rounded-lg border">
-          <div className="grid grid-cols-[1fr_120px_180px_140px] border-b px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-            <span>Name</span>
-            <span>Code</span>
-            <span>Contact</span>
-            <span>Credit Limit</span>
-          </div>
-          {customers.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted-foreground">No customers have been created yet.</p>
-          ) : (
-            customers.map((customer) => (
-              <div key={customer.id} className="grid grid-cols-[1fr_120px_180px_140px] border-b px-4 py-3 text-sm last:border-b-0">
-                <div>
-                  <p className="font-medium">{customer.name}</p>
-                  {customer.email ? <p className="text-xs text-muted-foreground">{customer.email}</p> : null}
-                </div>
-                <span className="text-muted-foreground">{customer.code ?? "-"}</span>
-                <span className="text-muted-foreground">{customer.contactName ?? customer.phone ?? "-"}</span>
-                <span className="text-muted-foreground">
-                  {customer.creditLimit === null ? "-" : `${customer.creditLimit.toString()} KWD`}
-                </span>
-              </div>
-            ))
-          )}
-        </section>
+        <CustomerTable
+          customers={active.map((c) => ({
+            id: c.id, name: c.name, code: c.code ?? "", contactName: c.contactName ?? "",
+            email: c.email ?? "", phone: c.phone ?? "", address: c.address ?? "",
+            paymentTerms: c.paymentTerms ?? "", creditLimit: c.creditLimit?.toString() ?? "",
+            notes: c.notes ?? "", archived: false,
+            outstanding: balanceMap.get(c.id)?.outstanding ?? 0,
+          }))}
+          archived={archived.map((c) => ({
+            id: c.id, name: c.name, code: c.code ?? "", contactName: c.contactName ?? "",
+            email: c.email ?? "", phone: c.phone ?? "", address: c.address ?? "",
+            paymentTerms: c.paymentTerms ?? "", creditLimit: c.creditLimit?.toString() ?? "",
+            notes: c.notes ?? "", archived: true,
+            outstanding: balanceMap.get(c.id)?.outstanding ?? 0,
+          }))}
+        />
       </div>
     </AppShell>
   );

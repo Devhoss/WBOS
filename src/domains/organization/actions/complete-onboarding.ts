@@ -7,7 +7,7 @@ import { AuthSessionService } from "@/infrastructure/auth/auth-session-service";
 import { BusinessError } from "@/shared/errors/business-error";
 
 const completeOnboardingSchema = z.object({
-  organizationName: z.string().trim().min(2, "Organization name is required."),
+  organizationName: z.string().trim().min(2, "Organization name is required.").optional().default(""),
 });
 
 export async function completeOnboarding(input: unknown) {

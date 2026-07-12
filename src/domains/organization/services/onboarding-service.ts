@@ -1,14 +1,4 @@
-import { type DocumentType } from "@prisma/client";
-
 import { prisma } from "@/infrastructure/database/prisma";
-
-const defaultDocumentSequences: Array<{ documentType: DocumentType; prefix: string }> = [
-  { documentType: "INV", prefix: "INV" },
-  { documentType: "PO", prefix: "PO" },
-  { documentType: "CN", prefix: "CN" },
-  { documentType: "PAY", prefix: "PAY" },
-  { documentType: "GRN", prefix: "GRN" },
-];
 
 type CompleteOnboardingInput = {
   userId: string;
@@ -27,7 +17,30 @@ export class OnboardingService {
       return existingMembership.organization;
     }
 
-    const year = new Date().getFullYear();
+    const existingOrg = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+
+    if (existingOrg) {
+      await prisma.organizationMembership.create({
+        data: {
+          organizationId: existingOrg.id,
+          userId: input.userId,
+          role: "OWNER",
+        },
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          organizationId: existingOrg.id,
+          userId: input.userId,
+          action: "ORGANIZATION_ONBOARDED",
+          entityType: "Organization",
+          entityId: existingOrg.id,
+          summary: `User ${input.userId} attached to existing organization as OWNER.`,
+        },
+      });
+
+      return existingOrg;
+    }
 
     return prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
@@ -54,18 +67,6 @@ export class OnboardingService {
           timezone: "Asia/Kuwait",
           invoicePrefix: "INV",
         },
-      });
-
-      await tx.documentSequence.createMany({
-        data: defaultDocumentSequences.map((sequence) => ({
-          organizationId: organization.id,
-          documentType: sequence.documentType,
-          year,
-          currentSequence: 0,
-          prefix: sequence.prefix,
-          separator: "-",
-          digits: 6,
-        })),
       });
 
       await tx.activityLog.create({

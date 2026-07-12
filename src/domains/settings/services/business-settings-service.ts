@@ -1,10 +1,10 @@
-import { BusinessError } from "@/shared/errors/business-error";
-
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
+import { BusinessError } from "@/shared/errors/business-error";
 
 import { BusinessSettingsRepository } from "../repositories/business-settings-repository";
-import type { UpdateBusinessSettingsInput } from "../validation/business-settings-schema";
+import type { updateBusinessSettingsSchema } from "../validation/business-settings-schema";
+import type { z } from "zod";
 
 export class BusinessSettingsService {
   constructor(
@@ -16,30 +16,27 @@ export class BusinessSettingsService {
     const settings = await this.settings.findByOrganizationId(context.organizationId);
 
     if (!settings) {
-      throw new BusinessError("Business settings have not been created for this organization.", "SETTINGS_REQUIRED");
+      throw new BusinessError("Business settings not found.", "SETTINGS_NOT_FOUND");
     }
 
     return settings;
   }
 
-  async updateForContext(context: AuthenticatedRequestContext, input: UpdateBusinessSettingsInput) {
-    const settings = await this.settings.updateForOrganization(context.organizationId, input);
+  async updateForContext(
+    context: AuthenticatedRequestContext,
+    input: z.infer<typeof updateBusinessSettingsSchema>,
+  ) {
+    const result = await this.settings.updateForOrganization(context.organizationId, input);
 
     await this.activityLogs.create({
       organizationId: context.organizationId,
       userId: context.userId,
       action: "BUSINESS_SETTINGS_UPDATED",
       entityType: "BusinessSettings",
-      entityId: settings.id,
-      summary: "Business settings were updated.",
-      metadata: {
-        businessName: settings.businessName,
-        defaultCurrency: settings.defaultCurrency,
-        timezone: settings.timezone,
-        invoicePrefix: settings.invoicePrefix,
-      },
+      entityId: result.id,
+      summary: "Business settings updated.",
     });
 
-    return settings;
+    return result;
   }
 }

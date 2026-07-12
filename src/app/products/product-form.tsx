@@ -2,6 +2,7 @@
 
 import { Plus } from "lucide-react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { createProduct } from "@/domains/products/actions/create-product";
 import { updateProduct } from "@/domains/products/actions/update-product";
@@ -39,6 +40,7 @@ export function ProductForm({
   suppliers: Option[];
   units: Option[];
 }) {
+  const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const isEditing = Boolean(product);
@@ -70,6 +72,7 @@ export function ProductForm({
 
       setMessage(isEditing ? "Product updated." : "Product created.");
       onSuccess?.();
+      router.refresh();
     });
   }
 

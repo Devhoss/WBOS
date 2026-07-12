@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
@@ -32,6 +33,13 @@ export async function deleteProduct(input: unknown) {
       return {
         ok: false,
         message: error.message,
+      };
+    }
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return {
+        ok: false,
+        message: "This product is referenced by business documents and cannot be deleted. Archive it instead.",
       };
     }
 

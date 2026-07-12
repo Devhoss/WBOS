@@ -30,3 +30,31 @@ export const createCustomerSchema = z.object({
 });
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
+
+export const updateCustomerSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(2, "Customer name is required.").max(120),
+  code: optionalText.refine((value) => !value || /^[A-Z0-9-]+$/.test(value), {
+    message: "Use uppercase letters, numbers, and hyphens only.",
+  }),
+  contactName: optionalText,
+  email: optionalEmail,
+  phone: optionalText,
+  address: optionalText,
+  paymentTerms: optionalText,
+  creditLimit: z
+    .union([
+      z.literal("").transform(() => undefined),
+      z.coerce.number().min(0, "Credit limit cannot be negative."),
+    ])
+    .optional(),
+  notes: optionalText,
+});
+
+export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;
+
+const idSchema = z.object({ id: z.string().min(1) });
+
+export const archiveCustomerSchema = idSchema;
+export const activateCustomerSchema = idSchema;
+export const deleteCustomerSchema = idSchema;
