@@ -1,9 +1,7 @@
 services:
   app:
-    image: wbos:latest
-
+    image: ghcr.io/devhoss/wbos:latest
     container_name: wbos-app
-
     restart: unless-stopped
 
     ports:
@@ -22,12 +20,6 @@ services:
 
     networks:
       - homelab
-
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
