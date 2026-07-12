@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { createCycleCount } from "@/domains/inventory/actions/create-cycle-count";
+import { uid } from "@/lib/uid";
 
 type ProductOption = { id: string; sku: string; name: string };
 type WarehouseOption = { id: string; name: string; code: string };
@@ -16,7 +17,7 @@ type Line = {
 };
 
 function createLine(productId?: string, expectedQty?: string): Line {
-  return { id: crypto.randomUUID(), productId: productId ?? "", expectedQty: expectedQty ?? "", notes: "" };
+  return { id: uid(), productId: productId ?? "", expectedQty: expectedQty ?? "", notes: "" };
 }
 
 export function CycleCountForm({

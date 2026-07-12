@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { createManualReceipt } from "../../../domains/inventory/actions/create-manual-receipt";
+import { uid } from "@/lib/uid";
 
 type ProductOption = {
   id: string;
@@ -26,7 +27,7 @@ type ReceiptLine = {
 
 function createLine(): ReceiptLine {
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     productId: "",
     quantity: "",
     notes: "",

@@ -44,8 +44,8 @@ async function getHealth() {
     const latency = Date.now() - dbStart;
     blocks.push({ label: "Database", value: `Connected (${latency}ms)`, ok: true, icon: <Database className="size-5" /> });
 
-    await prisma.$queryRaw`SELECT id FROM "Organization" LIMIT 1`;
-    blocks.push({ label: "Prisma ORM", value: "Connected", ok: true, icon: <Package className="size-5" /> });
+    const orgExists = await prisma.organization.findFirst({ select: { id: true } });
+    blocks.push({ label: "Prisma ORM", value: orgExists ? "Connected" : "No organization data", ok: true, icon: <Package className="size-5" /> });
   } catch {
     blocks.push({ label: "Database", value: "Disconnected", ok: false, icon: <XCircle className="size-5" /> });
     blocks.push({ label: "Prisma ORM", value: "Disconnected", ok: false, icon: <XCircle className="size-5" /> });

@@ -4,6 +4,7 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { updatePurchaseOrder } from "../../../../../domains/purchasing/actions/update-purchase-order";
+import { uid } from "@/lib/uid";
 
 type ProductOption = {
   id: string;
@@ -336,7 +337,7 @@ export function EditPurchaseOrderForm({
             setLines((current) => [
               ...current,
               {
-                id: crypto.randomUUID(),
+                id: uid(),
                 productId: "",
                 unitOfMeasureId: "",
                 orderedQuantity: "",

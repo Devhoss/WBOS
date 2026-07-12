@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { createSalesOrderAction } from "../../../../domains/sales/actions/create-sales-order";
+import { uid } from "@/lib/uid";
 
 type ProductOption = { id: string; sku: string; name: string; defaultSellingPrice: number; unitOfMeasureId: string; unitOfMeasureCode: string };
 type CustomerOption = { id: string; name: string; code: string | null; creditLimit: number; outstanding: number; openInvoiceCount: number };
@@ -27,7 +28,7 @@ type SOLine = {
 
 function createLine(): SOLine {
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "",
     productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "",
   };

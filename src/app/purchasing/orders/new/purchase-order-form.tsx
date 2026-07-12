@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { createPurchaseOrder } from "../../../../domains/purchasing/actions/create-purchase-order";
+import { uid } from "@/lib/uid";
 
 type ProductOption = {
   id: string;
@@ -36,7 +37,7 @@ type POLine = {
 
 function createLine(): POLine {
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     productId: "",
     unitOfMeasureId: "",
     orderedQuantity: "",

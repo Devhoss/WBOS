@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { createWarehouseTransfer } from "@/domains/inventory/actions/create-warehouse-transfer";
+import { uid } from "@/lib/uid";
 
 type ProductOption = {
   id: string;
@@ -26,7 +27,7 @@ type TransferLine = {
 
 function createLine(): TransferLine {
   return {
-    id: crypto.randomUUID(),
+    id: uid(),
     productId: "",
     quantity: "",
     notes: "",

@@ -4,6 +4,7 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { updateSalesOrderAction } from "../../../../../domains/sales/actions/update-sales-order";
+import { uid } from "@/lib/uid";
 
 type ProductOpt = { id: string; sku: string; name: string; defaultSellingPrice: number; unitOfMeasureId: string; unitOfMeasureCode: string };
 type CustomerOpt = { id: string; name: string; code: string | null };
@@ -190,7 +191,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
       </div>
       <div className="mt-4 flex items-center gap-3">
         <button className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted" type="button"
-          onClick={() => setLines((c) => [...c, { id: crypto.randomUUID(), productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "", productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "" }])}>
+          onClick={() => setLines((c) => [...c, { id: uid(), productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "", productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "" }])}>
           <Plus className="size-4" />Add Line
         </button>
         {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
