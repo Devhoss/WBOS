@@ -1,7 +1,7 @@
 "use client";
 
 import type { ApprovalMode, CurrencyCode } from "@prisma/client";
-import { ImagePlus, Save, Trash2 } from "lucide-react";
+import { ImagePlus, Redo2, Save, Trash2 } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
 
 import { updateBusinessSettings } from "@/domains/settings/actions/update-business-settings";
@@ -217,6 +217,22 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           </div>
         </label>
       </section>
+
+      <div className="border-t pt-6">
+        <button
+          type="button"
+          onClick={() => {
+            localStorage.removeItem("wbos-onboarding-dismissed");
+          }}
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+        >
+          <Redo2 className="size-3.5" />
+          Reopen setup wizard
+        </button>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Show the getting-started checklist on the dashboard.
+        </p>
+      </div>
 
       <div className="flex items-center gap-3">
         <button

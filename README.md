@@ -1,397 +1,423 @@
 # WBOS — Wholesale Business Operating System
 
-> A modern, self-hosted business operating system for wholesale import and distribution companies.
+> A modern, self-hosted business operating system for wholesale import and distribution companies. Replaces spreadsheet-driven workflows with a reliable, auditable, all-in-one platform.
+
+---
+
+## Table of Contents
+
+- [Vision](#vision)
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Architecture](#architecture)
+- [Screenshots](#screenshots)
+- [Hosting / Deployment](#hosting--deployment)
+  - [Production Architecture](#production-architecture)
+  - [Quick Start (Docker Compose)](#quick-start-docker-compose)
+  - [Updating](#updating)
+  - [Environment Variables](#environment-variables)
+  - [Database](#database)
+- [Development Setup](#development-setup)
+- [Project Structure](#project-structure)
+- [Development Status](#development-status)
+- [Design Philosophy](#design-philosophy)
+- [Why WBOS Exists](#why-wbos-exists)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
 ## Vision
 
-WBOS (Wholesale Business Operating System) is a business management platform built to replace spreadsheet-driven workflows with a reliable, scalable, and modern system.
+WBOS was born from a real business need. Our wholesale snack import business relied heavily on Excel (and eventually Odoo) to manage inventory, purchase orders, shipments, customers, suppliers, sales, payments, and financial reporting. Spreadsheets offered flexibility but became increasingly difficult to maintain, audit, and scale as the business grew.
 
-The project began from a real business need.
-
-Our wholesale snack import business relied heavily on Excel to manage:
-
-* Inventory
-* Purchase Orders
-* Shipments
-* Customers
-* Suppliers
-* Sales
-* Payments
-* Financial reporting
-
-While spreadsheets offered flexibility, they became increasingly difficult to maintain as the business grew.
-
-WBOS is designed to become the single source of truth for every operational workflow.
+WBOS is the single source of truth for every operational workflow — from purchasing inventory to receiving customer payments.
 
 ---
 
-# Goals
+## Features
 
-WBOS is designed to be:
+### Inventory Management
+- Products with SKU, barcode, categories, and unit of measure tracking
+- Multi-warehouse support with per-warehouse stock levels
+- FIFO inventory costing with lot-level tracking
+- Immutable inventory ledger — every stock movement is recorded and cannot be altered
+- Stock adjustments, warehouse transfers, and cycle counts
+- Low stock alerts and inventory valuation
 
-* Reliable
-* Fast
-* Self-hosted
-* Maintainable
-* Auditable
-* Extensible
-* AI-friendly
+### Purchasing
+- Supplier management with contact details and history
+- Purchase orders with partial receiving support
+- Goods receipt notes (GRN) with automatic inventory posting
+- Receiving against POs or manual (ad-hoc) receiving
+- Approval workflow (self-approval or dual approval)
 
-The long-term objective is to build software that can operate a wholesale business from purchasing inventory to receiving customer payments.
+### Sales
+- Customer management with credit limits and outstanding balances
+- Sales orders with line-item pricing from product catalog
+- Sales invoices with credit notes
+- Customer statements and aging reports
+- Partial payment allocation across invoices
 
----
+### Payments
+- Payment recording with allocation to specific invoices
+- Payment history per customer and invoice
+- Outstanding balance tracking
 
-# Core Principles
+### Operational Dashboard
+- Real-time KPIs: today's sales, monthly revenue, outstanding receivables, inventory value, low stock items, overdue customers
+- Monthly sales trend chart
+- Top products and top customers charts
+- Recent activity feed
+- Unpaid invoices summary
 
-The architecture of WBOS follows several guiding principles:
+### Reporting
+- Sales reports
+- Inventory valuation reports
+- Gross profit analysis
+- Purchasing reports
+- Customer and supplier reports
 
-* Business-first design
-* Domain-driven architecture
-* Immutable business history
-* Transaction-based inventory
-* FIFO inventory costing
-* Strong financial integrity
-* Multi-tenant ready
-* Docker-first deployment
-* AI-assisted development
+### Onboarding & UX
+- Guided first-run setup wizard (warehouses → products → customers → suppliers → orders)
+- Dismissible onboarding card that collapses into a compact progress banner
+- Welcome dashboard with quick-action buttons for empty organizations
+- Responsive sidebar with desktop collapsible (Ctrl+B) and mobile slide-over drawer
+- Dark mode support
+- Production-ready error boundaries on all forms
 
-Every architectural decision supports these principles.
-
----
-
-# Features
-
-## Inventory Management
-
-* Products
-* Categories
-* Warehouses
-* Inventory Lots
-* Inventory Ledger
-* FIFO Costing
-* Inventory Adjustments
-* Stock Transfers
-* Physical Inventory Counts
-
----
-
-## Purchasing
-
-* Suppliers
-* Purchase Orders
-* Partial Receiving
-* Shipments
-* Inventory Receiving
-* Supplier History
-
----
-
-## Sales
-
-* Customers
-* Sales Invoices
-* Credit Notes
-* Customer Statements
-* Outstanding Balances
+### Production Polish (recently completed)
+- Print-ready invoice layout with `window.open()` navigation
+- Server-side PDF generation via Playwright in Docker
+- Auth session handling fixed — API routes pass request headers directly
+- All client-side `crypto.randomUUID()` replaced with a universal `uid()` fallback for compatibility
+- Health endpoints switched from raw SQL (`SELECT id FROM "Organization"`) to Prisma ORM — zero `prisma:error` on build
+- Complete favicon set (`favicon.ico`, SVG, 16×16, 32×32, Apple Touch Icon, `site.webmanifest`)
+- Logo upload fixed with cache-busting and image-load error fallback
+- Empty states across all list pages
 
 ---
 
-## Payments
+## Technology Stack
 
-* Partial Payments
-* Payment Allocation
-* Customer Balances
-* Financial History
+### Frontend
+- **Next.js 15** (App Router)
+- **React 19**
+- **TypeScript**
+- **Tailwind CSS 4**
+- **shadcn/ui** components
 
----
+### Backend
+- **Next.js Server Actions** — form mutations
+- **Route Handlers** — API endpoints (PDF generation, health checks)
+- **Application Services** — business logic layer
+- **Repository Pattern** — database access abstraction
 
-## Reporting
+### Database
+- **PostgreSQL 17**
+- **Prisma ORM** with migrations
 
-* Sales Reports
-* Inventory Valuation
-* Gross Profit
-* Purchasing Reports
-* Customer Reports
-* Supplier Reports
-* Dashboard Analytics
+### Authentication
+- **Better Auth** with email/password, session management, and organization-level multi-tenancy
 
----
-
-## Future Features
-
-* Barcode Scanning
-* Mobile Warehouse Mode
-* AI Purchasing Assistant
-* Demand Forecasting
-* Public API
-* Third-Party Integrations
-* Plugin System
+### Deployment
+- **Docker** with `output: "standalone"` for self-hosting
+- **Docker Compose** — single-command deployment
+- **GitHub Container Registry (GHCR)** — container image distribution
 
 ---
 
-# Technology Stack
+## Architecture
 
-## Frontend
-
-* Next.js (App Router)
-* React
-* TypeScript
-* Tailwind CSS
-* shadcn/ui
-
----
-
-## Backend
-
-* Next.js Server Actions
-* Route Handlers
-* Application Services
-* Repository Pattern
-
----
-
-## Database
-
-* PostgreSQL
-* Prisma ORM
-
----
-
-## Authentication
-
-* Better Auth
-
----
-
-## Deployment
-
-* Docker
-* Docker Compose
-* Self-hosted
-
----
-
-# Architecture
-
-WBOS follows a Modular Monolith architecture.
+WBOS follows a **Modular Monolith** architecture with domain-driven structure.
 
 ```text
 Browser
     │
     ▼
-React Components
+React Components (Server + Client)
     │
     ▼
 Server Actions / Route Handlers
     │
     ▼
-Application Services
+Application Services  ──►  Domain Logic
     │
     ▼
-Repositories
-    │
-    ▼
-Prisma
-    │
-    ▼
-PostgreSQL
+Repositories  ──►  Prisma ORM  ──►  PostgreSQL
 ```
 
-Business logic is isolated from the UI.
-
-Database access is isolated from business logic.
-
-Every layer has a single responsibility.
+Key architectural decisions:
+- **Immutable business history** — inventory ledger entries, once written, are never modified
+- **Transaction-based inventory** — every stock movement is a double-entry ledger transaction
+- **FIFO inventory costing** — cost layers tracked per lot, consumed in order of receipt
+- **Multi-tenant** — all data scoped to `organizationId` via authenticated request context
+- **Column-level encryption** — sensitive fields (VAT numbers, financial data) encrypted at rest
 
 ---
 
-# Project Structure
+## Hosting / Deployment
 
-```text
+### Production Architecture
+
+```
+GitHub ──► GitHub Container Registry (GHCR)
+              │
+              ▼
+         Homelab Server
+              │
+              ▼
+    Docker Compose (wbos + postgres)
+              │
+              ▼
+         Port 3005 → Container 3000
+```
+
+Images are built via GitHub Actions, pushed to `ghcr.io/devhoss/wbos:latest`, and pulled onto the server.
+
+### Quick Start (Docker Compose)
+
+```yaml
+services:
+  wbos:
+    image: ghcr.io/devhoss/wbos:latest
+    ports:
+      - "3005:3000"
+    environment:
+      DATABASE_URL: "postgresql://user:password@db:5432/wbos"
+      BETTER_AUTH_URL: "http://<your-domain-or-ip>:3005"
+      INTERNAL_APP_URL: "http://127.0.0.1:3000"
+      BETTER_AUTH_SECRET: "<generate-a-secret>"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: wbos
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+```
+
+1. Copy the snippet above into a `docker-compose.yml` file.
+2. Replace `BETTER_AUTH_SECRET` with a random string (run `openssl rand -hex 32`).
+3. Replace the database credentials.
+4. Run:
+
+```bash
+docker compose up -d
+```
+
+5. Visit `http://localhost:3005`, sign up, and complete the onboarding wizard.
+
+### Updating
+
+```bash
+git pull                       # if using a local checkout
+docker compose pull            # pull the latest GHCR image
+docker compose up -d           # recreate containers
+```
+
+The database schema is automatically migrated on container start via the entrypoint script.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `BETTER_AUTH_URL` | Yes | Public URL of the app (used for auth redirects) |
+| `BETTER_AUTH_SECRET` | Yes | Secret key for session encryption |
+| `INTERNAL_APP_URL` | No | Internal URL for Playwright PDF generation (default: `http://127.0.0.1:3000`) |
+
+### Database
+
+WBOS uses **PostgreSQL 17**. The schema is managed through Prisma migrations:
+
+```bash
+# Apply migrations
+npx prisma migrate deploy
+
+# Seed demo data (optional)
+node prisma/seed.mjs
+```
+
+The Docker entrypoint runs `npx prisma migrate deploy` automatically before starting the Next.js server.
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+- **Node.js 22+**
+- **PostgreSQL 17** (local or Docker)
+- **pnpm** (recommended) or npm
+
+### Steps
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd wbos
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Copy environment variables
+cp .env.example .env
+# Edit .env with your database credentials
+
+# 4. Run database migrations
+npx prisma migrate deploy
+
+# 5. Seed demo data (optional)
+node prisma/seed.mjs
+
+# 6. Start the dev server
+pnpm dev
+```
+
+Visit `http://localhost:3000`.
+
+### Useful Commands
+
+```bash
+pnpm dev          # Start development server
+pnpm build        # Production build
+pnpm test         # Run tests (Vitest)
+pnpm lint         # Run linter (ESLint / Biome)
+npx prisma studio # Database GUI (port 5555)
+```
+
+---
+
+## Project Structure
+
+```
 docs/
-├── adr/
-├── PROJECT_BIBLE.md
+├── adr/                    # Architecture Decision Records
+├── PROJECT_BIBLE.md        # Complete project specification
 ├── business-rules.md
 ├── workflows.md
-├── database.md
 ├── domain-model.md
-├── glossary.md
+├── database.md
 ├── architecture.md
 ├── coding-standards.md
-├── ui-guidelines.md
-├── roadmap.md
-├── accounting-principles.md
+└── roadmap.md
 
 src/
-├── app/
-├── domains/
-├── shared/
-├── infrastructure/
-└── lib/
+├── app/                    # Next.js App Router pages + API routes
+│   ├── sales/
+│   ├── purchasing/
+│   ├── inventory/
+│   ├── invoices/
+│   ├── reports/
+│   ├── customers/
+│   ├── suppliers/
+│   ├── warehouses/
+│   ├── settings/
+│   ├── onboarding/
+│   └── api/
+├── components/             # Shared React components
+│   ├── ui/                 # shadcn/ui primitives
+│   ├── sidebar.tsx
+│   ├── app-shell.tsx
+│   ├── org-branding.tsx
+│   ├── onboarding-panel.tsx
+│   ├── empty-state.tsx
+│   └── ...
+├── domains/                # Business domains (DDD)
+│   ├── sales/
+│   ├── purchasing/
+│   ├── inventory/
+│   ├── customers/
+│   ├── suppliers/
+│   ├── warehouses/
+│   └── settings/
+├── shared/                 # Shared utilities & errors
+├── infrastructure/         # Framework concerns (auth, DB, request context)
+└── lib/                    # General utilities
 ```
 
 ---
 
-# Documentation
+## Development Status
 
-The documentation is organized into several sections.
+**Status:** Production-ready for single-organization deployments.
 
-## Business
+Completed modules:
+- ✅ Authentication & authorization (Better Auth, RBAC: Owner/Admin/Manager/Staff)
+- ✅ Organization onboarding & multi-tenancy
+- ✅ Master data: products, customers, suppliers, warehouses, categories, units of measure
+- ✅ Inventory management: stock ledger, transfers, adjustments, cycle counts, FIFO costing
+- ✅ Purchasing: purchase orders, goods receipt, partial receiving, approval workflow
+- ✅ Sales: sales orders, invoices, credit notes, customer statements
+- ✅ Payments: payment allocation, outstanding balance tracking
+- ✅ Reporting: dashboard analytics, sales/inventory/purchasing reports
+- ✅ Operational dashboard with KPIs, charts, and activity feed
+- ✅ Print-layout invoices with server-side PDF generation
+- ✅ Responsive layout with mobile navigation
+- ✅ Production polish: error boundaries, empty states, onboarding UX, favicon set
+- ✅ Docker self-hosting with automated DB migrations
 
-Defines how the business operates.
-
-* Project Bible
-* Business Rules
-* Workflows
-* Domain Model
-* Database
-* Accounting Principles
-* Glossary
-
----
-
-## Engineering
-
-Defines how the software is built.
-
-* Architecture
-* Coding Standards
-* UI Guidelines
-* Roadmap
-* Development Setup
+Planned:
+- Barcode scanning
+- Mobile warehouse mode (PWA)
+- AI purchasing assistant & demand forecasting
+- Public REST API
+- Third-party integrations & plugin system
 
 ---
 
-## Architecture Decision Records
+## Design Philosophy
 
-Documents every significant architectural decision.
+WBOS is productivity software. The interface is designed to help users complete work quickly and confidently.
 
-Examples include:
+Design inspiration:
+- **Linear** — clean, fast task management
+- **Stripe Dashboard** — data density with clarity
+- **GitHub** — familiar navigation patterns
+- **Vercel** — modern, minimal admin UI
+- **Notion** — flexible content organization
 
-* Modular Monolith
-* Multi-Tenant Architecture
-* Transaction-Based Inventory
-* FIFO Inventory Lots
-* PostgreSQL + Prisma
-* Better Auth
-* Server Actions
-* Domain-Driven Architecture
-* Financial Model
-
----
-
-# Development Philosophy
-
-WBOS is developed incrementally.
-
-The priorities are:
-
-1. Correctness
-2. Simplicity
-3. Maintainability
-4. Business Value
-
-Features are only considered complete when they support real business workflows.
+Focus areas:
+- Clarity over visual effects
+- Consistency across all modules
+- Efficiency for frequent actions
+- Keyboard shortcuts where they add value (Ctrl+B for sidebar toggle)
 
 ---
 
-# Roadmap
+## Why WBOS Exists
 
-The project is divided into incremental phases.
+Most small and medium wholesale businesses begin with spreadsheets (or expensive, over-engineered ERPs). Over time, spreadsheets become difficult to maintain, audit, and scale.
 
-* Phase 0 — Planning & Architecture
-* Phase 1 — Foundation
-* Phase 2 — Master Data
-* Phase 3 — Inventory
-* Phase 4 — Purchasing
-* Phase 5 — Sales & Payments
-* Phase 6 — Reporting
-* Phase 7 — Productivity
-* Phase 8 — Intelligence
-* Phase 9 — Platform Expansion
-
-Each phase leaves the application in a deployable and usable state.
-
----
-
-# Development Status
-
-**Current Phase:** Phase 2 — Master Data
-
-Phase 1 is complete.
-
-The application now has working authentication, onboarding, tenant resolution, protected routes, database migrations, seed workflow, and setup documentation. Phase 2 begins with Business Settings enhancements, followed by Warehouses, Categories, Suppliers, Customers, Units of Measure, and Products.
-
----
-
-# Design Philosophy
-
-WBOS is productivity software.
-
-The interface should help users complete work quickly and confidently.
-
-The application draws inspiration from:
-
-* Linear
-* Stripe Dashboard
-* GitHub
-* Vercel
-* Notion
-
-The focus is on clarity, consistency, and efficiency rather than visual effects.
-
----
-
-# Why WBOS Exists
-
-Most small and medium wholesale businesses begin with spreadsheets.
-
-Over time, spreadsheets become:
-
-* Difficult to maintain
-* Difficult to audit
-* Difficult to scale
-* Prone to human error
-
-WBOS exists to replace disconnected spreadsheets with a single, reliable operating system that models how the business actually works.
-
-The software is being built from real operational experience rather than hypothetical requirements.
-
----
-
-# Contributing
-
-WBOS follows documented engineering standards.
-
-Before contributing, please read:
-
-* `docs/coding-standards.md`
-* `docs/architecture.md`
-* `docs/domain-model.md`
-* `docs/business-rules.md`
-
-Consistency is valued over personal preference.
-
-Every significant architectural decision should be documented through an Architecture Decision Record (ADR).
-
----
-
-# License
-
-This project is currently private.
-
-Licensing terms will be determined if the project is released publicly.
-
----
-
-# Final Thoughts
-
-WBOS is more than an inventory system.
-
-It is an attempt to build software that accurately represents how a wholesale business operates while remaining simple enough to maintain for many years.
-
-The project prioritizes thoughtful architecture over rapid feature development, believing that strong foundations ultimately produce better software.
+WBOS exists to replace disconnected spreadsheets — and complex ERPs — with a single, reliable operating system that models how a wholesale business actually works. The software is built from real operational experience rather than hypothetical requirements.
 
 > **Build the right software before building more software.**
+
+---
+
+## Contributing
+
+Before contributing, please read the documentation in `docs/`:
+
+- `docs/coding-standards.md` — code style, naming conventions, patterns
+- `docs/architecture.md` — architectural overview and decisions
+- `docs/domain-model.md` — domain entities and relationships
+- `docs/business-rules.md` — core business logic rules
+
+Every significant architectural decision should be documented through an Architecture Decision Record (ADR) in `docs/adr/`.
+
+---
+
+## License
+
+This project is currently private. Licensing terms will be determined if the project is released publicly.

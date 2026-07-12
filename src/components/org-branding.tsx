@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 0) return "?";
@@ -20,15 +24,17 @@ export function OrgBranding({
   logoPath?: string | null;
   size?: "sm" | "md" | "lg";
 }) {
+  const [imgError, setImgError] = useState(false);
   const s = sizeMap[size];
 
-  if (logoPath) {
+  if (logoPath && !imgError) {
     return (
       <div className={`${s.wrapper} shrink-0 overflow-hidden rounded-md`}>
         <img
-          src={`/${logoPath}`}
+          src={`/${logoPath}?t=${Date.now()}`}
           alt={name}
           className="size-full object-contain"
+          onError={() => setImgError(true)}
         />
       </div>
     );
