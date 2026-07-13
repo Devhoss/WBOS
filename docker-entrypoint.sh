@@ -42,7 +42,7 @@ validate_dir "$STORAGE_ROOT" "Storage root"
 validate_dir "${STORAGE_ROOT}/uploads" "Uploads directory"
 validate_dir "${STORAGE_ROOT}/backups" "Backups directory"
 
-if [ -n "$FAIL" ]; then
+if [ "$FAIL" -ne 0 ]; then
   echo ""
   echo "  ✗ Storage validation FAILED."
   echo ""
