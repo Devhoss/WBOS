@@ -42,3 +42,35 @@ a,
 button {
   outline-color: hsl(var(--primary));
 }
+
+:root {
+  --sidebar-width: 16rem;
+}
+html[data-sidebar-collapsed="true"] {
+  --sidebar-width: 4rem;
+}
+
+/* Sidebar inner content — CSS-driven to prevent hydration FOUC (scoped to .sidebar-panel only) */
+.sidebar-panel .sidebar-header { padding-left: 1.25rem; padding-right: 1.25rem; }
+[data-sidebar-collapsed="true"] .sidebar-panel .sidebar-header { justify-content: center; padding-left: 0; padding-right: 0; }
+
+[data-sidebar-collapsed="true"] .sidebar-panel .sidebar-company-name { display: none; }
+[data-sidebar-collapsed="true"] .sidebar-panel .sidebar-org-md { display: none; }
+[data-sidebar-collapsed="false"] .sidebar-panel .sidebar-org-sm { display: none; }
+
+.sidebar-panel .nav-item { padding-left: 0.75rem; padding-right: 0.75rem; }
+[data-sidebar-collapsed="true"] .sidebar-panel .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+[data-sidebar-collapsed="true"] .sidebar-panel .nav-item-label { display: none; }
+
+[data-sidebar-collapsed="true"] .sidebar-panel .toggle-icon-expand { display: none; }
+[data-sidebar-collapsed="false"] .sidebar-panel .toggle-icon-collapse { display: none; }
+
+/* Onboarding panel — prevent hydration FOUC */
+[data-onboarding-dismissed="true"] .onboarding-expanded { display: none; }
+[data-onboarding-dismissed="false"] .onboarding-collapsed { display: none; }
+
+/* Prevent width/padding transitions on initial page load */
+html:not([data-sidebar-ready]) .sidebar-panel,
+html:not([data-sidebar-ready]) .main-area {
+  transition-duration: 0s !important;
+}

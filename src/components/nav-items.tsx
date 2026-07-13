@@ -41,16 +41,14 @@ export function NavItems({ collapsed }: { collapsed?: boolean }) {
             key={item.href}
             href={item.href}
             title={collapsed ? item.name : undefined}
-            className={`flex h-9 items-center gap-3 rounded-md text-sm transition ${
-              collapsed ? "justify-center px-0" : "px-3"
-            } ${
+            className={`nav-item flex h-9 items-center gap-3 rounded-md text-sm transition ${
               active
                 ? "bg-primary/10 text-primary font-medium"
                 : "text-muted-foreground hover:bg-background hover:text-foreground"
             }`}
           >
             <item.icon className="size-4 shrink-0" />
-            {!collapsed && item.name}
+            <span className="nav-item-label">{item.name}</span>
           </Link>
         );
       })}

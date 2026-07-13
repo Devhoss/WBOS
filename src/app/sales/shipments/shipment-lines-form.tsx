@@ -106,22 +106,26 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
     <section className="rounded-lg border p-5">
       <h2 className="text-sm font-semibold">1. Select Sales Order</h2>
       <div className="mt-3">
-        <label className="sr-only">Sales Order</label>
-        <select className="h-10 w-full max-w-md rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-          value={selection?.orderId ?? ""} onChange={(e) => selectOrder(e.target.value)}>
-          <option value="" disabled>Choose an order...</option>
-          {orders.map((o) => (<option key={o.id} value={o.id}>{o.soNumber} - {o.customerName} ({o.lines.length} line(s))</option>))}
-        </select>
+        <label className="sr-only">
+          Sales Order
+          <select className="block h-10 w-full max-w-md rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+            value={selection?.orderId ?? ""} onChange={(e) => selectOrder(e.target.value)}>
+            <option value="" disabled>Choose an order...</option>
+            {orders.map((o) => (<option key={o.id} value={o.id}>{o.soNumber} - {o.customerName} ({o.lines.length} line(s))</option>))}
+          </select>
+        </label>
       </div>
 
       <h2 className="mt-6 text-sm font-semibold">2. Warehouse</h2>
       <div className="mt-3">
-        <label className="sr-only">Warehouse</label>
-        <select className="h-10 w-full max-w-md rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-          value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
-          <option value="" disabled>Select warehouse...</option>
-          {warehouses.map((w) => (<option key={w.id} value={w.id}>{w.name} ({w.code})</option>))}
-        </select>
+        <label className="sr-only">
+          Warehouse
+          <select className="block h-10 w-full max-w-md rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+            value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+            <option value="" disabled>Select warehouse...</option>
+            {warehouses.map((w) => (<option key={w.id} value={w.id}>{w.name} ({w.code})</option>))}
+          </select>
+        </label>
       </div>
 
       {selectedOrder ? (

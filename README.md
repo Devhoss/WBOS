@@ -185,9 +185,14 @@ services:
       - "3005:3000"
     environment:
       DATABASE_URL: "postgresql://user:password@db:5432/wbos"
-      BETTER_AUTH_URL: "http://<your-domain-or-ip>:3005"
+      BETTER_AUTH_URL: "https://wbos.yourdomain.com"
       INTERNAL_APP_URL: "http://127.0.0.1:3000"
       BETTER_AUTH_SECRET: "<generate-a-secret>"
+      BETTER_AUTH_TRUSTED_ORIGINS: "http://localhost:3000"
+      WBOS_STORAGE_ROOT: "/app/storage"
+    volumes:
+      - ./storage:/app/storage
+      - ./backups:/app/backups
     depends_on:
       - db
     restart: unless-stopped
@@ -206,16 +211,34 @@ volumes:
   pgdata:
 ```
 
-1. Copy the snippet above into a `docker-compose.yml` file.
-2. Replace `BETTER_AUTH_SECRET` with a random string (run `openssl rand -hex 32`).
-3. Replace the database credentials.
-4. Run:
+### First Deployment
 
-```bash
-docker compose up -d
-```
+1. **Create storage directories** with the correct UID (the app runs as UID 1001):
 
-5. Visit `http://localhost:3005`, sign up, and complete the onboarding wizard.
+   ```bash
+   mkdir -p storage backups
+   sudo chown -R 1001:1001 storage backups
+   sudo chmod -R 775 storage backups
+   ```
+
+2. Copy the snippet above into a `docker-compose.yml` file.
+
+3. Replace `BETTER_AUTH_SECRET` with a random string (run `openssl rand -hex 32`).
+
+4. Replace the database credentials and domain.
+
+5. Start the stack:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   On first start, the entrypoint script automatically:
+   - Validates storage directories exist and are writable
+   - Runs database migrations
+   - Starts the application server
+
+6. Visit `https://wbos.yourdomain.com`, sign up, and complete the onboarding wizard.
 
 ### Updating
 
@@ -260,7 +283,46 @@ Uploaded files (organization logos) are stored in `WBOS_STORAGE_ROOT/uploads/`. 
 ```yaml
 volumes:
   - ./storage:/app/storage
+  - ./backups:/app/backups
 ```
+
+On first deployment, ensure the directories exist and have correct permissions:
+
+```bash
+mkdir -p storage backups
+sudo chown -R 1001:1001 storage backups
+sudo chmod -R 775 storage backups
+```
+
+The container runs a storage validation check on startup. If permissions are incorrect, the container will fail immediately with a clear error message and instructions. Run `docker compose logs app` to see the validation output.
+
+### Health Check Endpoint
+
+The application exposes a health check at `/api/health`:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
+Response:
+```json
+{
+  "healthy": true,
+  "app": { "uptime": 42, "status": "running" },
+  "database": { "ok": true, "latency": "2ms" },
+  "prisma": { "ok": true, "latency": "1ms", "organizationExists": true },
+  "storage": { "root": "/app/storage", "exists": true, "writable": true, "uploads": true, "backups": true },
+  "environment": "production"
+}
+```
+
+The health check validates:
+- Database connectivity (`SELECT 1`)
+- Prisma ORM initialization
+- Storage root exists and is writable
+- Required subdirectories exist (uploads, backups)
+
+The Docker `HEALTHCHECK` polls this endpoint every 30 seconds.
 
 ### Database
 

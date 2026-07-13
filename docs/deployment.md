@@ -111,19 +111,22 @@ scp wbos.tar user@debian-server:/home/user/wbos/
 
 # ── On the Debian homelab server ──
 
-# 5. Set up the project directory
-mkdir -p /opt/wbos
+# 5. Create storage directories with correct permissions
+# The application runs as UID 1001 inside the container.
+# Bind-mounted directories must be writable by this user.
+mkdir -p /opt/wbos/storage /opt/wbos/backups
+sudo chown -R 1001:1001 /opt/wbos/storage /opt/wbos/backups
+sudo chmod -R 775 /opt/wbos/storage /opt/wbos/backups
+
+# 6. Set up the project directory
 cd /opt/wbos
 # Copy docker-compose.yml, .env, and scripts from the repository
 
-# 6. Load the image
+# 7. Load the image
 docker load -i /home/user/wbos/wbos.tar
 
-# 7. Start the stack
+# 8. Start the stack
 docker compose up -d
-
-# 8. Run database migrations
-docker compose exec app npx prisma migrate deploy
 
 # 9. (Optional) Seed demo data
 docker compose exec app node prisma/demo-seed.mjs

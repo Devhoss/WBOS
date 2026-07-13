@@ -25,10 +25,7 @@ export function AppShellClient({
         collapsed={collapsed}
       />
 
-      <div
-        className="transition-[padding] duration-200 ease-in-out lg:pt-0"
-        style={{ paddingLeft: collapsed ? 64 : 256 }}
-      >
+      <div className="main-area pl-[var(--sidebar-width)] transition-[padding] duration-200 ease-in-out lg:pt-0">
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur lg:h-16 lg:px-8">
           <div className="flex items-center gap-2 min-w-0">
             <MobileNav

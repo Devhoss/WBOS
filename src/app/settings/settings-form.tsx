@@ -105,8 +105,8 @@ export function SettingsForm({ settings }: SettingsFormProps) {
             {logoPreview ? (
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element -- blob URL not supported by next/image */}
-                <img src={logoPreview} alt="Logo" className="max-h-16 max-w-48 rounded border object-contain" />
-                <button type="button" onClick={handleRemoveLogo} className="absolute -right-2 -top-2 rounded-full bg-red-100 p-0.5 text-red-600 hover:bg-red-200">
+                <img src={logoPreview} alt="Company logo preview" className="max-h-16 max-w-48 rounded border object-contain" />
+                <button type="button" onClick={handleRemoveLogo} aria-label="Remove logo" className="absolute -right-2 -top-2 rounded-full bg-red-100 p-0.5 text-red-600 hover:bg-red-200">
                   <Trash2 className="size-3" />
                 </button>
               </div>

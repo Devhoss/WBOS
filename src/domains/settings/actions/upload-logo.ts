@@ -37,8 +37,25 @@ export async function uploadLogoAction(formData: FormData) {
     const ext = file.name.split(".").pop() ?? "png";
     const dir = join(storageRoot, "uploads", `org-${context.organizationId}`);
 
-    if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true });
+    try {
+      if (!existsSync(dir)) {
+        await mkdir(dir, { recursive: true });
+      }
+    } catch (err) {
+      console.error("[upload-logo] Failed to create upload directory", {
+        storageRoot,
+        targetDir: dir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        uid: (process as any).getuid?.() ?? "N/A",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        gid: (process as any).getgid?.() ?? "N/A",
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        message:
+          "Upload directory could not be created. Please verify the storage volume is mounted and writable.",
+      };
     }
 
     const oldSettings = await new BusinessSettingsRepository().findByOrganizationId(context.organizationId);
@@ -56,8 +73,27 @@ export async function uploadLogoAction(formData: FormData) {
     }
 
     const filename = `logo.${ext}`;
+    const filePath = join(dir, filename);
     const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(join(dir, filename), buffer);
+
+    try {
+      await writeFile(filePath, buffer);
+    } catch (err) {
+      console.error("[upload-logo] Failed to write file", {
+        storageRoot,
+        destinationPath: filePath,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        uid: (process as any).getuid?.() ?? "N/A",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        gid: (process as any).getgid?.() ?? "N/A",
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        ok: false,
+        message:
+          "File could not be saved. Please verify the storage volume has write permissions for UID 1001.",
+      };
+    }
 
     const logoPath = `uploads/org-${context.organizationId}/${filename}`;
     await new BusinessSettingsRepository().updateForOrganization(context.organizationId, { logoPath });
@@ -69,6 +105,15 @@ export async function uploadLogoAction(formData: FormData) {
     if (error instanceof BusinessError) {
       return { ok: false, message: error.message };
     }
-    throw error;
+
+    console.error("[upload-logo] Unexpected error", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    return {
+      ok: false,
+      message: "An unexpected error occurred while uploading the logo. Please check the server logs.",
+    };
   }
 }

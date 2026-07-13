@@ -20,21 +20,22 @@ const SidebarContext = createContext<SidebarContextValue>({
   closeMobile: () => {},
 });
 
+function getInitialCollapsed(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.dataset.sidebarCollapsed === "true";
+}
+
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(getInitialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") setCollapsed(true);
-  }, []);
+    document.documentElement.dataset.sidebarCollapsed = String(collapsed);
+    localStorage.setItem(STORAGE_KEY, String(collapsed));
+  }, [collapsed]);
 
   const toggle = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem(STORAGE_KEY, String(next));
-      return next;
-    });
+    setCollapsed((prev) => !prev);
   }, []);
 
   const openMobile = useCallback(() => setMobileOpen(true), []);

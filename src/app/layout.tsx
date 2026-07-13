@@ -19,6 +19,18 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
 };
 
+const INLINE_SCRIPT = `
+(function(){
+  try {
+    var s = localStorage.getItem('wbos-sidebar-collapsed');
+    document.documentElement.dataset.sidebarCollapsed = String(s === 'true');
+    var o = localStorage.getItem('wbos-onboarding-dismissed');
+    document.documentElement.dataset.onboardingDismissed = String(o === 'true');
+    document.documentElement.dataset.sidebarReady = '';
+  } catch(e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,6 +43,7 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap"
         />
+        <script dangerouslySetInnerHTML={{ __html: INLINE_SCRIPT }} />
       </head>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
