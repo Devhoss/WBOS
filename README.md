@@ -232,9 +232,35 @@ The database schema is automatically migrated on container start via the entrypo
 | Variable | Required | Description |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `BETTER_AUTH_URL` | Yes | Public URL of the app (used for auth redirects) |
+| `BETTER_AUTH_URL` | Yes | Public URL (must match what users type in the browser, e.g. `https://wbos.example.com`) |
 | `BETTER_AUTH_SECRET` | Yes | Secret key for session encryption |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | No | Comma-separated list of additional origins to trust (for reverse proxy or development) |
 | `INTERNAL_APP_URL` | No | Internal URL for Playwright PDF generation (default: `http://127.0.0.1:3000`) |
+| `WBOS_STORAGE_ROOT` | No | Directory for uploaded files (default: `<cwd>/public`). Must be a persisted Docker volume. |
+
+### Reverse Proxy (Nginx Proxy Manager)
+
+If using Nginx Proxy Manager (or similar) in front of the Docker container:
+
+1. **Set `BETTER_AUTH_URL`** to the public HTTPS URL (e.g. `https://wbos.home.lab`).
+2. **Forwarded headers** — ensure NPM passes these to the backend:
+   - `X-Forwarded-Proto: https`
+   - `X-Forwarded-Host: wbos.home.lab`
+   - `X-Forwarded-For` (your client IP)
+3. **Trusted origins** — add any development or internal URLs to `BETTER_AUTH_TRUSTED_ORIGINS`:
+   ```
+   BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:3000,http://192.168.100.36:3000
+   ```
+4. **WebSocket support** (optional, for hot reload) — enable WebSocket passthrough in NPM.
+
+### Storage Persistence
+
+Uploaded files (organization logos) are stored in `WBOS_STORAGE_ROOT/uploads/`. Mount a Docker volume to persist uploads across container restarts:
+
+```yaml
+volumes:
+  - ./storage:/app/storage
+```
 
 ### Database
 

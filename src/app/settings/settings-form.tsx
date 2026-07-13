@@ -30,7 +30,7 @@ type SettingsFormProps = {
 
 export function SettingsForm({ settings }: SettingsFormProps) {
   const [message, setMessage] = useState<string | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(settings.logoPath ? `/${settings.logoPath}` : null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(settings.logoPath ? `/api/${settings.logoPath}` : null);
   const [isPending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -81,7 +81,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     }
 
     if (result.logoPath) {
-      setLogoPreview(`/${result.logoPath}`);
+      setLogoPreview(`/api/${result.logoPath}`);
     }
 
     setMessage("Logo uploaded.");
@@ -223,6 +223,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           type="button"
           onClick={() => {
             localStorage.removeItem("wbos-onboarding-dismissed");
+            window.location.href = "/";
           }}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
         >

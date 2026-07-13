@@ -8,12 +8,23 @@ const publicRoutes = new Set([
   "/sign-up/",
 ]);
 
-const publicPrefixes = ["/api/", "/_next", "/favicon"];
+const publicPrefixes = [
+  "/api/",
+  "/_next",
+  "/favicon",
+  "/site.webmanifest",
+  "/apple-touch-icon",
+  "/robots.txt",
+  "/sitemap.xml",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (publicRoutes.has(pathname) || publicPrefixes.some((p) => pathname.startsWith(p))) {
+  if (
+    publicRoutes.has(pathname) ||
+    publicPrefixes.some((p) => pathname.startsWith(p))
+  ) {
     return NextResponse.next();
   }
 
@@ -31,5 +42,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|uploads|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|uploads|favicon\\.ico|site\\.webmanifest|apple-touch-icon|robots\\.txt|sitemap\\.xml).*)",
+  ],
 };

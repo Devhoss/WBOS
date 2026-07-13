@@ -33,8 +33,9 @@ export async function uploadLogoAction(formData: FormData) {
       return { ok: false, message: "File must be smaller than 2MB." };
     }
 
+    const storageRoot = process.env.WBOS_STORAGE_ROOT ?? join(process.cwd(), "public");
     const ext = file.name.split(".").pop() ?? "png";
-    const dir = join(process.cwd(), "public", "uploads", `org-${context.organizationId}`);
+    const dir = join(storageRoot, "uploads", `org-${context.organizationId}`);
 
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
@@ -43,9 +44,14 @@ export async function uploadLogoAction(formData: FormData) {
     const oldSettings = await new BusinessSettingsRepository().findByOrganizationId(context.organizationId);
 
     if (oldSettings?.logoPath) {
-      const oldPath = join(process.cwd(), "public", oldSettings.logoPath);
-      if (existsSync(oldPath)) {
-        await unlink(oldPath);
+      const oldPaths = [
+        join(storageRoot, oldSettings.logoPath),
+        join(process.cwd(), "public", oldSettings.logoPath),
+      ];
+      for (const op of oldPaths) {
+        if (existsSync(op)) {
+          await unlink(op).catch(() => {});
+        }
       }
     }
 

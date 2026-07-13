@@ -31,7 +31,7 @@ export function OrgBranding({
     return (
       <div className={`${s.wrapper} shrink-0 overflow-hidden rounded-md`}>
         <img
-          src={`/${logoPath}?t=${Date.now()}`}
+          src={`/api/${logoPath}`}
           alt={name}
           className="size-full object-contain"
           onError={() => setImgError(true)}
