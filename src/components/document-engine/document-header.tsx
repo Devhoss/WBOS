@@ -16,7 +16,7 @@ export function DocumentHeader({ logoUrl }: { logoUrl?: string | null }) {
               {logoUrl || branding.logoPath ? (
                 // eslint-disable-next-line @next/next/no-img-element -- used in PDF/print context where next/image may interfere with Chromium rendering
                 <img
-                  src={logoUrl ?? `/${branding.logoPath}`}
+                  src={logoUrl ?? `/api/${branding.logoPath}`}
                   alt={branding.businessName}
                   className="max-h-20 max-w-48 object-contain"
                 />

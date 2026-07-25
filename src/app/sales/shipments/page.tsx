@@ -14,7 +14,7 @@ export default async function ShipmentsListPage({ searchParams }: { searchParams
   const params = await searchParams;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
   const { data: shipments } = await new ShipmentRepository().listWithFilters(context.organizationId, {
-    ...(params.status ? { status: params.status as "PENDING_PICK" | "PICKING" | "PICKED" | "LOADED" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED" } : {}),
+    ...(params.status ? { status:       params.status as "PENDING_PICK" | "PICKING" | "PICKED" | "LOADED" | "DELIVERED" | "FAILED" } : {}),
     pageSize: 100,
   });
 
@@ -37,7 +37,7 @@ export default async function ShipmentsListPage({ searchParams }: { searchParams
             <input className="h-10 w-full rounded-lg border bg-background pl-10 pr-4 text-sm outline-none focus:border-primary" name="q" placeholder="Search by number or customer..." type="search" defaultValue={params.q ?? ""} />
           </form>
           <div className="flex gap-2">
-            {["", "PENDING_PICK", "PICKING", "PICKED", "LOADED", "OUT_FOR_DELIVERY", "DELIVERED", "FAILED"].map((s) => (
+            {["", "PENDING_PICK", "PICKING", "PICKED", "LOADED", "DELIVERED", "FAILED"].map((s) => (
               <Link key={s} href={s ? `/sales/shipments?status=${s}` : "/sales/shipments"}
                 className={`inline-flex h-9 items-center rounded-md border px-3 text-xs font-medium transition hover:bg-muted ${params.status === s || (!params.status && !s) ? "bg-primary text-primary-foreground" : ""}`}>
                 {s ? formatStatus(s) : "All"}

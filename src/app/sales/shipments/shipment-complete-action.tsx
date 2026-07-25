@@ -1,21 +1,23 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { confirmDeliveryAction } from "../../../domains/sales/actions/confirm-delivery";
 
 export function ShipmentDeliverAction({ shipmentId, returning }: { shipmentId: string; returning?: string }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
-  function deliver() {
-    startTransition(async () => {
+  async function deliver() {
+    setIsPending(true);
+    try {
       const result = await confirmDeliveryAction({ id: shipmentId });
-      if (!result.ok) return;
+      if (!result.ok) { setIsPending(false); return; }
       if (returning) router.push(returning);
       else router.refresh();
-    });
+    } catch { console.error("Delivery failed"); }
+    setIsPending(false);
   }
 
   return (

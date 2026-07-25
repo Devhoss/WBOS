@@ -1,5 +1,3 @@
-import { Prisma } from "@prisma/client";
-
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
@@ -43,6 +41,11 @@ export class ShipmentService {
       throw new BusinessError("Warehouse was not found.", "INVENTORY_WAREHOUSE_NOT_FOUND");
     }
 
+    const existingShipments = await this.shipments.listBySalesOrderNonDelivered(
+      context.organizationId,
+      input.salesOrderId,
+    );
+
     for (const line of input.lines) {
       const soLine = order.lines.find((l) => l.id === line.salesOrderLineId);
 
@@ -50,11 +53,18 @@ export class ShipmentService {
         throw new BusinessError("Sales order line was not found.", "SALES_LINE_NOT_FOUND");
       }
 
-      const remaining = Number(soLine.orderedQuantity) - Number(soLine.shippedQuantity);
+      const deliveredQty = Number(soLine.shippedQuantity);
+      const allocatedQty = existingShipments.reduce(
+        (sum, s) => sum + s.lines
+          .filter((l) => l.salesOrderLineId === line.salesOrderLineId)
+          .reduce((s2, l) => s2 + Number(l.quantity), 0),
+        0,
+      );
+      const remaining = Number(soLine.orderedQuantity) - deliveredQty - allocatedQty;
 
       if (Number(line.quantity) > remaining) {
         throw new BusinessError(
-          `Shipping quantity exceeds the remaining order quantity (${remaining.toFixed(3)}).`,
+          `Shipping quantity exceeds the remaining order quantity (${remaining.toFixed(3)} remaining after existing shipments).`,
           "SALES_OVER_SHIP",
         );
       }
@@ -93,7 +103,7 @@ export class ShipmentService {
       action: "SHIPMENT_CREATED",
       entityType: "Shipment",
       entityId: shipment.id,
-      summary: `Shipment ${documentNumber} created for sales order ${order.soNumber}.`,
+      summary: `Shipment ${documentNumber} created for ${order.soNumber} by ${context.user.name}.`,
       metadata: {
         shipmentNumber: documentNumber,
         salesOrderId: order.id,
@@ -103,61 +113,20 @@ export class ShipmentService {
       },
     });
 
+    await this.activityLogs.create({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: "SHIPMENT_CREATED",
+      entityType: "SalesOrder",
+      entityId: order.id,
+      summary: `Shipment ${documentNumber} was created for this order.`,
+      metadata: {
+        shipmentNumber: documentNumber,
+        warehouseId: warehouse.id,
+      },
+    });
+
     return shipment;
-  }
-
-  async scanPick(context: AuthenticatedRequestContext, shipmentId: string, barcode: string) {
-    const shipment = await this.shipments.findById(context.organizationId, shipmentId);
-
-    if (!shipment) {
-      throw new BusinessError("Shipment was not found.", "SHIPMENT_NOT_FOUND");
-    }
-
-    if (shipment.status !== "PENDING_PICK" && shipment.status !== "PICKING") {
-      throw new BusinessError("Shipment is not in picking status.", "SHIPMENT_INVALID_STATUS");
-    }
-
-    const line = shipment.lines.find(
-      (l) => l.product?.barcode === barcode && new Prisma.Decimal(l.pickedQuantity).lt(new Prisma.Decimal(l.quantity)),
-    );
-
-    if (!line) {
-      const alreadyFullyPicked = shipment.lines.some(
-        (l) => l.product?.barcode === barcode && new Prisma.Decimal(l.pickedQuantity).gte(new Prisma.Decimal(l.quantity)),
-      );
-
-      if (alreadyFullyPicked) {
-        throw new BusinessError("This product is already fully picked.", "SHIPMENT_ALREADY_PICKED");
-      }
-
-      throw new BusinessError("No unpicked line matches this barcode.", "SHIPMENT_BARCODE_MISMATCH");
-    }
-
-    const remaining = Number(line.quantity) - Number(line.pickedQuantity);
-    const scanning = Math.min(1, remaining);
-
-    await this.shipments.incrementPickedQuantity(context.organizationId, line.id);
-
-    if (shipment.status === "PENDING_PICK") {
-      await this.setStatus(context, shipment, "PICKING");
-    }
-
-    const updatedShipment = await this.shipments.findById(context.organizationId, shipmentId);
-
-    const allFullyPicked = updatedShipment!.lines.every(
-      (l) => Number(l.pickedQuantity) >= Number(l.quantity),
-    );
-
-    if (allFullyPicked) {
-      await this.setStatus(context, updatedShipment!, "PICKED");
-    }
-
-    return {
-      picked: scanning,
-      remaining: remaining - scanning,
-      lineId: line.id,
-      productName: line.productName,
-    };
   }
 
   async addPickQuantity(context: AuthenticatedRequestContext, shipmentId: string, lineId: string, quantity: number) {
@@ -167,7 +136,7 @@ export class ShipmentService {
       throw new BusinessError("Shipment was not found.", "SHIPMENT_NOT_FOUND");
     }
 
-    if (shipment.status !== "PENDING_PICK" && shipment.status !== "PICKING") {
+    if (shipment.status !== "PENDING_PICK" && shipment.status !== "PICKING" && shipment.status !== "PICKED") {
       throw new BusinessError("Shipment is not in picking status.", "SHIPMENT_INVALID_STATUS");
     }
 
@@ -181,7 +150,8 @@ export class ShipmentService {
       throw new BusinessError("Quantity must be greater than zero.", "SHIPMENT_INVALID_QUANTITY");
     }
 
-    const remaining = Number(line.quantity) - Number(line.pickedQuantity);
+    const currentPicked = Number(line.pickedQuantity);
+    const remaining = Number(line.quantity) - currentPicked;
 
     if (quantity > remaining) {
       throw new BusinessError(
@@ -192,26 +162,81 @@ export class ShipmentService {
 
     await this.shipments.addPickedQuantity(context.organizationId, line.id, quantity);
 
-    if (shipment.status === "PENDING_PICK") {
-      await this.setStatus(context, shipment, "PICKING");
-    }
-
-    const updatedShipment = await this.shipments.findById(context.organizationId, shipmentId);
-
-    const allFullyPicked = updatedShipment!.lines.every(
-      (l) => Number(l.pickedQuantity) >= Number(l.quantity),
-    );
-
-    if (allFullyPicked) {
-      await this.setStatus(context, updatedShipment!, "PICKED");
-    }
-
-    return {
+    const result = {
       picked: quantity,
       remaining: remaining - quantity,
       lineId: line.id,
       productName: line.productName,
+      newPicked: currentPicked + quantity,
     };
+
+    return result;
+  }
+
+  async removePickQuantity(context: AuthenticatedRequestContext, shipmentId: string, lineId: string, quantity: number) {
+    const shipment = await this.shipments.findById(context.organizationId, shipmentId);
+
+    if (!shipment) {
+      throw new BusinessError("Shipment was not found.", "SHIPMENT_NOT_FOUND");
+    }
+
+    if (shipment.status !== "PENDING_PICK" && shipment.status !== "PICKING" && shipment.status !== "PICKED") {
+      throw new BusinessError("Shipment is not in picking status.", "SHIPMENT_INVALID_STATUS");
+    }
+
+    const line = shipment.lines.find((l) => l.id === lineId);
+
+    if (!line) {
+      throw new BusinessError("Shipment line was not found.", "SHIPMENT_LINE_NOT_FOUND");
+    }
+
+    if (quantity <= 0) {
+      throw new BusinessError("Quantity must be greater than zero.", "SHIPMENT_INVALID_QUANTITY");
+    }
+
+    const currentPicked = Number(line.pickedQuantity);
+
+    if (quantity > currentPicked) {
+      throw new BusinessError(
+        `Cannot remove ${quantity} — only ${currentPicked} picked for this line.`,
+        "SHIPMENT_UNDER_PICK",
+      );
+    }
+
+    await this.shipments.addPickedQuantity(context.organizationId, line.id, -quantity);
+
+    const result = {
+      removed: quantity,
+      remaining: currentPicked - quantity,
+      lineId: line.id,
+      productName: line.productName,
+      newPicked: currentPicked - quantity,
+    };
+
+    return result;
+  }
+
+  async recomputeShipmentStatus(context: AuthenticatedRequestContext, shipmentId: string) {
+    const updated = await this.shipments.findById(context.organizationId, shipmentId);
+    if (!updated) return;
+
+    const totalPicked = updated.lines.reduce((sum, l) => sum + Number(l.pickedQuantity), 0);
+    const allFullyPicked = updated.lines.every(
+      (l) => Number(l.pickedQuantity) >= Number(l.quantity),
+    );
+
+    let newStatus: string;
+    if (totalPicked === 0) {
+      newStatus = "PENDING_PICK";
+    } else if (allFullyPicked) {
+      newStatus = "PICKED";
+    } else {
+      newStatus = "PICKING";
+    }
+
+    if (newStatus !== updated.status) {
+      await this.setStatus(context, updated, newStatus);
+    }
   }
 
   async deliver(context: AuthenticatedRequestContext, id: string) {
@@ -221,7 +246,7 @@ export class ShipmentService {
       throw new BusinessError("Shipment was not found.", "SHIPMENT_NOT_FOUND");
     }
 
-    if (shipment.status !== "LOADED" && shipment.status !== "OUT_FOR_DELIVERY") {
+    if (shipment.status !== "LOADED") {
       throw new BusinessError("Shipment cannot be delivered from its current state.", "SHIPMENT_INVALID_STATUS");
     }
 
@@ -321,7 +346,7 @@ export class ShipmentService {
       action: "SHIPMENT_DELIVERED",
       entityType: "Shipment",
       entityId: shipment.id,
-      summary: `Shipment ${shipment.shipmentNumber} delivered and posted to inventory.`,
+      summary: `Shipment ${shipment.shipmentNumber} delivered by ${context.user.name} and posted to inventory.`,
       metadata: {
         shipmentNumber: shipment.shipmentNumber,
         salesOrderId,
@@ -329,19 +354,72 @@ export class ShipmentService {
         lineCount: shipment.lines.length,
       },
     });
+
+    await this.activityLogs.create({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: "SHIPMENT_DELIVERED",
+      entityType: "SalesOrder",
+      entityId: salesOrderId,
+      summary: `Shipment ${shipment.shipmentNumber} was delivered for this order.`,
+      metadata: {
+        shipmentNumber: shipment.shipmentNumber,
+      },
+    });
+
+    const invoiceForLog = await prisma.invoice.findFirst({
+      where: { salesOrderId, organizationId: context.organizationId, status: { notIn: ["CANCELLED", "DRAFT"] } },
+      select: { id: true, invoiceNumber: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (invoiceForLog) {
+      await this.activityLogs.create({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        action: "SHIPMENT_DELIVERED",
+        entityType: "Invoice",
+        entityId: invoiceForLog.id,
+        summary: `Shipment ${shipment.shipmentNumber} was delivered for invoice ${invoiceForLog.invoiceNumber}.`,
+        metadata: {
+          shipmentNumber: shipment.shipmentNumber,
+        },
+      });
+    }
   }
 
-  async updateStatus(context: AuthenticatedRequestContext, id: string, status: string) {
-    const allowedStatuses = ["PICKING", "PICKED", "LOADED", "OUT_FOR_DELIVERY", "FAILED"];
+  private validTransitions: Record<string, string[]> = {
+    PENDING_PICK: ["PICKING", "PICKED", "CANCELLED"],
+    PICKING: ["PICKED", "PENDING_PICK", "CANCELLED"],
+    PICKED: ["LOADED", "CANCELLED"],
+    LOADED: ["DELIVERED", "FAILED"],
+    DELIVERED: [],
+    FAILED: [],
+    CANCELLED: [],
+  };
 
-    if (!allowedStatuses.includes(status)) {
-      throw new BusinessError("Invalid shipment status transition.", "SHIPMENT_INVALID_STATUS");
+  async updateStatus(context: AuthenticatedRequestContext, id: string, status: string) {
+    const allowedTargets = ["PICKING", "PICKED", "LOADED", "FAILED", "CANCELLED"];
+
+    if (!allowedTargets.includes(status)) {
+      throw new BusinessError(
+        `Invalid target status "${status}". Allowed: ${allowedTargets.join(", ")}`,
+        "SHIPMENT_INVALID_STATUS",
+      );
     }
 
     const shipment = await this.shipments.findById(context.organizationId, id);
 
     if (!shipment) {
       throw new BusinessError("Shipment was not found.", "SHIPMENT_NOT_FOUND");
+    }
+
+    const allowed = this.validTransitions[shipment.status];
+    if (!allowed || !allowed.includes(status)) {
+      throw new BusinessError(
+        `Cannot transition shipment from ${shipment.status} to ${status}.`,
+        "SHIPMENT_INVALID_TRANSITION",
+      );
     }
 
     await this.shipments.updateStatus(context.organizationId, id, status as never);
@@ -352,7 +430,7 @@ export class ShipmentService {
       action: `SHIPMENT_${status}`,
       entityType: "Shipment",
       entityId: id,
-      summary: `Shipment ${shipment.shipmentNumber} status changed to ${status}.`,
+      summary: `Shipment ${shipment.shipmentNumber} status changed to ${status} by ${context.user.name}.`,
       metadata: { shipmentNumber: shipment.shipmentNumber, previousStatus: shipment.status, newStatus: status },
     });
   }
@@ -366,7 +444,7 @@ export class ShipmentService {
       action: `SHIPMENT_${status}`,
       entityType: "Shipment",
       entityId: shipment.id,
-      summary: `Shipment ${shipment.shipmentNumber} status changed to ${status}.`,
+      summary: `Shipment ${shipment.shipmentNumber} status changed to ${status} by ${context.user.name}.`,
       metadata: { shipmentNumber: shipment.shipmentNumber, previousStatus: shipment.status, newStatus: status },
     });
   }

@@ -28,6 +28,7 @@ export function DocumentTimeline({ entries }: { entries: TimelineEntry[] }) {
                   <p className="text-sm">{entry.summary}</p>
                   <div className="mt-0.5 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
+                      {entry.userName ? <>{entry.userName} &middot; </> : null}
                       {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {" "}&middot;{" "}
                       {time.toLocaleDateString()}

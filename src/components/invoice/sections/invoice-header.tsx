@@ -10,7 +10,7 @@ export function InvoiceHeader({ branding, invoice, language, isRtl }: SectionPro
             {branding.logoPath ? (
               // eslint-disable-next-line @next/next/no-img-element -- must use plain <img> for reliable Playwright PDF rendering
               <img
-                src={`/${branding.logoPath}`}
+                src={`/api/${branding.logoPath}`}
                 alt={branding.businessName}
                 style={{ maxHeight: "100px", maxWidth: "240px", objectFit: "contain" }}
               />

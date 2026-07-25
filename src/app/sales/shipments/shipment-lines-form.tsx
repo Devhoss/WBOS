@@ -1,12 +1,13 @@
 "use client";
 
 import { Package, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { createShipmentAction } from "../../../domains/sales/actions/create-shipment";
 
 type OrderOpt = {
-  id: string; soNumber: string; customerName: string;
+  id: string; soNumber: string; customerName: string; expectedShipDate: string | null;
+  isScheduled: boolean;
   lines: Array<{ id: string; productId: string; productName: string; productSku: string; orderedQuantity: number; shippedQuantity: number; unitOfMeasureCode: string }>;
 };
 type WarehouseOpt = { id: string; name: string; code: string };
@@ -16,7 +17,7 @@ type OrderSelection = { orderId: string; lines: ShipmentLineInput[] } | null;
 export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
   orders: OrderOpt[]; preselectedOrderId?: string; warehouses: WarehouseOpt[];
 }) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const [warehouseId, setWarehouseId] = useState(warehouses.find((w) => w)?.id ?? "");
   const [notes, setNotes] = useState("");
   const [selection, setSelection] = useState<OrderSelection>(() => {
@@ -73,23 +74,27 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
 
     setError(null);
     setMessage(null);
-    startTransition(async () => {
-      const result = await createShipmentAction({
-        salesOrderId: selection.orderId,
-        warehouseId,
-        notes: notes || undefined,
-        lines: validLines.map((l) => ({
-          salesOrderLineId: l.salesOrderLineId,
-          productId: l.productId,
-          quantity: l.quantity,
-          productName: l.productName,
-          productSku: l.productSku,
-          notes: l.notes || undefined,
-        })),
-      });
-      if (!result.ok) { setError(result.message ?? "Unable to create shipment."); return; }
-      window.location.href = `/sales/shipments/${result.data?.id}`;
-    });
+    setIsPending(true);
+    (async () => {
+      try {
+        const result = await createShipmentAction({
+          salesOrderId: selection.orderId,
+          warehouseId,
+          notes: notes || undefined,
+          lines: validLines.map((l) => ({
+            salesOrderLineId: l.salesOrderLineId,
+            productId: l.productId,
+            quantity: l.quantity,
+            productName: l.productName,
+            productSku: l.productSku,
+            notes: l.notes || undefined,
+          })),
+        });
+        if (!result.ok) { setError(result.message ?? "Unable to create shipment."); setIsPending(false); return; }
+        window.location.replace(`/sales/orders/${selection.orderId}`);
+      } catch { setError("An unexpected error occurred."); }
+      setIsPending(false);
+    })();
   }
 
   if (orders.length === 0) {
@@ -167,6 +172,17 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
             </table>
           </div>
 
+          {selectedOrder.isScheduled ? (
+            <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                Scheduled Shipment &ndash; {new Date(selectedOrder.expectedShipDate!).toLocaleDateString()}
+              </p>
+              <p className="mt-1 text-xs text-blue-700 dark:text-blue-400">
+                This order is scheduled for {new Date(selectedOrder.expectedShipDate!).toLocaleDateString()}. The warehouse will automatically receive this pick task on that day. No further action is required.
+              </p>
+            </div>
+          ) : null}
+
           <div className="mt-6 rounded-lg border bg-muted/20 p-4">
             <h3 className="text-sm font-semibold">Shipment Summary</h3>
             <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -194,7 +210,7 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
 
           <div className="mt-4 space-y-3">
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Shipment Notes</span>
+              <span className="font-medium">Office Instructions</span>
               <input className="h-10 w-full max-w-lg rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
                 value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." />
             </label>

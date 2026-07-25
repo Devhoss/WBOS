@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+import { BusinessCalendar } from "@/lib/business-calendar";
 import { AppShell } from "@/components/app-shell";
 import { WarehouseRepository } from "@/domains/warehouses/repositories/warehouse-repository";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -15,6 +16,8 @@ export const metadata: Metadata = { title: "New Shipment" };
 export default async function NewShipmentPage({ searchParams }: { searchParams: Promise<{ salesOrderId?: string }> }) {
   const params = await searchParams;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
+
+  const calendar = new BusinessCalendar(context.organization.timezone);
 
   const [orders, warehouses] = await Promise.all([
     prisma.salesOrder.findMany({
@@ -36,16 +39,21 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
     new WarehouseRepository().listActive(context.organizationId),
   ]);
 
-  const availableOrders = orders.map((o) => ({
-    id: o.id, soNumber: o.soNumber, customerName: o.customer.name,
-    lines: o.lines
+  const availableOrders = orders.map((o) => {
+    const expectedShipDate = o.expectedShipDate?.toISOString() ?? null;
+    return {
+      id: o.id, soNumber: o.soNumber, customerName: o.customer.name,
+      expectedShipDate,
+      isScheduled: expectedShipDate ? calendar.shouldSchedule(new Date(expectedShipDate)) : false,
+      lines: o.lines
       .filter((l) => Number(l.orderedQuantity) > Number(l.shippedQuantity))
       .map((l) => ({
         id: l.id, productId: l.productId, productName: l.productName, productSku: l.productSku,
         orderedQuantity: Number(l.orderedQuantity), shippedQuantity: Number(l.shippedQuantity),
         unitOfMeasureCode: l.unitOfMeasureCode,
       })),
-  })).filter((o) => o.lines.length > 0);
+    };
+  }).filter((o: { lines: unknown[] }) => o.lines.length > 0);
 
   const preselectedOrderId = params.salesOrderId;
   if (preselectedOrderId && !availableOrders.some((o) => o.id === preselectedOrderId)) {
@@ -62,8 +70,11 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
       },
     });
     if (!directOrder) notFound();
+    const directExpectedShipDate = directOrder.expectedShipDate?.toISOString() ?? null;
     availableOrders.push({
       id: directOrder.id, soNumber: directOrder.soNumber, customerName: directOrder.customer.name,
+      expectedShipDate: directExpectedShipDate,
+      isScheduled: directExpectedShipDate ? calendar.shouldSchedule(new Date(directExpectedShipDate)) : false,
       lines: directOrder.lines
         .filter((l) => Number(l.orderedQuantity) > Number(l.shippedQuantity))
         .map((l) => ({

@@ -2,7 +2,7 @@
 
 import {
   BadgePercent, BarChart3, Boxes, ClipboardList, CreditCard,
-  Home, Package, ReceiptText, Settings, ShoppingCart, Tags, Truck, Users, Warehouse,
+  Home, ListChecks, Package, ReceiptText, RotateCcw, Settings, ShoppingCart, Tags, Truck, Users, Warehouse,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -15,6 +15,9 @@ const navigation = [
   { name: "Purchasing", href: "/purchasing", icon: ShoppingCart },
   { name: "Suppliers", href: "/suppliers", icon: Truck },
   { name: "Customers", href: "/customers", icon: Users },
+  { name: "Tasks", href: "/tasks", icon: ListChecks },
+  { name: "Returns", href: "/returns", icon: RotateCcw },
+  { name: "Credit Notes", href: "/credit-notes", icon: ReceiptText },
   { name: "Sales", href: "/sales", icon: BadgePercent },
   { name: "Units", href: "/units", icon: ClipboardList },
   { name: "Invoices", href: "/invoices", icon: ReceiptText },

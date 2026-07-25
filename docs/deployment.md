@@ -22,6 +22,28 @@
 
 ---
 
+## Environment Overview
+
+WBOS has **three environment tiers**, each with its own `.env` file and API URL:
+
+| Tier | Env File | API URL | Use Case |
+|------|----------|---------|----------|
+| **Development** | `.env.development` | `http://192.168.100.10:3000` | Local dev machine, hot-reload |
+| **Homelab** | `.env` (production config) | `https://wbos.home.lab` (internal) / `http://192.168.100.36:3000` (LAN) | Self-hosted on Debian homelab server; Pi-hole/DNS resolves `wbos.home.lab` |
+| **Production** | `.env.production` (planned) | `https://api.wbos.app` | Future public cloud deployment |
+
+### Homelab Details
+
+The current production instance runs on a **Debian homelab server** at `192.168.100.36`:
+- **App**: Docker container (image `ghcr.io/devhoss/wbos`) exposed on host port **3005**
+- **Database**: PostgreSQL 17 running on the same host, port **5432**
+- **Reverse Proxy**: Configured in Nginx Proxy Manager, Caddy, or Traefik (see [Reverse Proxy](#reverse-proxy))
+- **Storage**: `/opt/wbos/storage` mounted into container at `/app/storage` for uploads
+- **Backups**: `/opt/wbos/backups` with automatic daily cron
+- **Mobile**: configured via `mobile/.env.homelab` → `API_URL=https://wbos.home.lab`
+
+---
+
 ## Prerequisites
 
 ### Build Machine (Windows / Linux)

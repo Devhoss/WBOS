@@ -34,11 +34,12 @@ export async function createSalesOrderAction(input: unknown) {
     if (result.creditLimitWarning) {
       return {
         ok: true,
+        data: { id: result.order.id },
         warning: result.creditLimitWarning,
       };
     }
 
-    return { ok: true };
+    return { ok: true, data: { id: result.order.id } };
   } catch (error) {
     if (error instanceof BusinessError) {
       return {

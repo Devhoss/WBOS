@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Save, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { updateSalesOrderAction } from "../../../../../domains/sales/actions/update-sales-order";
 import { uid } from "@/lib/uid";
@@ -9,6 +9,13 @@ import { uid } from "@/lib/uid";
 type ProductOpt = { id: string; sku: string; name: string; defaultSellingPrice: number; unitOfMeasureId: string; unitOfMeasureCode: string };
 type CustomerOpt = { id: string; name: string; code: string | null };
 type UnitOpt = { id: string; name: string; code: string };
+
+const WHOLE_UNITS = new Set(["PC", "PCS", "EA", "BOX", "CASE", "BAG", "BAGS", "UNIT", "UNITS", "ROLL", "ROLLS", "SHEET", "SHEETS", "SET", "SETS", "PAIR", "PAIRS", "DOZEN"]);
+
+function stepForUnit(id: string, units: UnitOpt[]): string {
+  const u = units.find((x) => x.id === id);
+  return u && WHOLE_UNITS.has(u.code) ? "1" : "0.001";
+}
 
 type OrderLine = {
   id: string; productId: string; unitOfMeasureId: string; orderedQuantity: string;
@@ -33,7 +40,7 @@ function calcTotal(q: string, p: string): string {
 export function EditSalesOrderForm({ order, products, customers, units }: {
   order: OrderData; products: ProductOpt[]; customers: CustomerOpt[]; units: UnitOpt[];
 }) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const [lines, setLines] = useState(order.lines);
   const [message, setMessage] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState(order.customerId);
@@ -62,7 +69,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
 
   function removeLine(id: string) { setLines((current) => (current.length === 1 ? current : current.filter((l) => l.id !== id))); }
 
-  function saveOrder() {
+  async function saveOrder() {
     setMessage(null);
     const subtotal = lines.reduce((s, l) => s + (Number.parseFloat(l.totalPrice) || 0), 0);
     const tax = Number.parseFloat(taxAmount) || 0;
@@ -73,7 +80,8 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
       discountAmount = subtotal * ((Number.parseFloat(discountRate) || 0) / 100);
     }
     const total = subtotal + tax - discountAmount;
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const result = await updateSalesOrderAction({
         id: order.id, customerId, currency, subtotal: subtotal.toFixed(3), taxAmount,
         totalAmount: total.toFixed(3),
@@ -89,9 +97,10 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
           description: l.description || undefined, notes: l.notes || undefined,
         })),
       });
-      if (!result.ok) { setMessage(result.message ?? "Unable to update."); return; }
+      if (!result.ok) { setMessage(result.message ?? "Unable to update."); setIsPending(false); return; }
+      setIsPending(false);
       setMessage("Sales order updated.");
-    });
+    } catch { setMessage("An unexpected error occurred."); setIsPending(false); }
   }
 
   return (
@@ -173,7 +182,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
                     {units.map((u) => (<option key={u.id} value={u.id}>{u.code}</option>))}
                   </select>
                 </td>
-                <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step="0.001" type="number" value={line.orderedQuantity} onChange={(e) => updateLine(line.id, { orderedQuantity: e.target.value })} /></td>
+                <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step={stepForUnit(line.unitOfMeasureId, units)} type="number" value={line.orderedQuantity} onChange={(e) => updateLine(line.id, { orderedQuantity: e.target.value })} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step="1" type="number" value={line.piecesPerBox} onChange={(e) => updateLine(line.id, { piecesPerBox: e.target.value })} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step="0.001" type="number" value={line.unitPrice} onChange={(e) => updateLine(line.id, { unitPrice: e.target.value })} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" readOnly type="text" value={line.totalPrice} /></td>

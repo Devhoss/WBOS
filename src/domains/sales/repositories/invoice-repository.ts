@@ -83,6 +83,35 @@ export class InvoiceRepository {
         customer: true,
         salesOrder: { select: { id: true, soNumber: true } },
         payments: { orderBy: { paidAt: "desc" } },
+        returnOrders: {
+          select: {
+            id: true,
+            returnNumber: true,
+            status: true,
+            reason: true,
+            notes: true,
+            createdAt: true,
+            completedAt: true,
+            cancelledAt: true,
+            lines: {
+              select: { id: true, productId: true, receivedQuantity: true, expectedQuantity: true, unitPrice: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        },
+        creditNotes: {
+          select: {
+            id: true,
+            creditNoteNumber: true,
+            status: true,
+            totalAmount: true,
+            reason: true,
+            createdAt: true,
+            issuedAt: true,
+            cancelledAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
   }
@@ -137,6 +166,16 @@ export class InvoiceRepository {
     return prisma.invoice.updateMany({
       where: { id, organizationId },
       data: { amountPaid: { increment: new Prisma.Decimal(amount) } },
+    });
+  }
+
+  async findBySalesOrderId(organizationId: string, salesOrderId: string) {
+    return prisma.invoice.findMany({
+      where: { organizationId, salesOrderId },
+      include: {
+        lines: true,
+        payments: { select: { id: true, amount: true, paidAt: true } },
+      },
     });
   }
 

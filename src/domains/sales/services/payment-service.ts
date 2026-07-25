@@ -98,6 +98,37 @@ export class PaymentService {
       },
     });
 
+    await this.activityLogs.create({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: "PAYMENT_RECORDED",
+      entityType: "Invoice",
+      entityId: invoice.id,
+      summary: `Payment ${documentNumber} of ${input.amount} ${input.currency} recorded.`,
+      metadata: {
+        paymentNumber: documentNumber,
+        amount: input.amount,
+        method: input.method,
+      },
+    });
+
+    if (invoice.salesOrderId) {
+      await this.activityLogs.create({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        action: "PAYMENT_RECORDED",
+        entityType: "SalesOrder",
+        entityId: invoice.salesOrderId,
+        summary: `Payment ${documentNumber} of ${input.amount} ${input.currency} recorded for invoice ${invoice.invoiceNumber}.`,
+        metadata: {
+          paymentNumber: documentNumber,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: input.amount,
+          method: input.method,
+        },
+      });
+    }
+
     return payment;
   }
 }

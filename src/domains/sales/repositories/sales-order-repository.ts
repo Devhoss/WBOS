@@ -80,6 +80,20 @@ export class SalesOrderRepository {
           include: { lines: true },
           orderBy: { createdAt: "desc" },
         },
+        returnOrders: {
+          select: {
+            id: true,
+            returnNumber: true,
+            status: true,
+            reason: true,
+            notes: true,
+            createdAt: true,
+            completedAt: true,
+            cancelledAt: true,
+            lines: { select: { id: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
   }
@@ -154,8 +168,8 @@ export class SalesOrderRepository {
     return { data, total, page, pageSize };
   }
 
-  async updateStatus(organizationId: string, id: string, status: SalesOrderStatus) {
-    return prisma.salesOrder.updateMany({ where: { id, organizationId }, data: { status } });
+  async updateStatus(organizationId: string, id: string, status: SalesOrderStatus, extra?: Record<string, unknown>) {
+    return prisma.salesOrder.updateMany({ where: { id, organizationId }, data: { status, ...extra } });
   }
 
   async update(

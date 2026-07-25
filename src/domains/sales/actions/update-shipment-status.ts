@@ -10,7 +10,7 @@ import { ShipmentService } from "../services/shipment-service";
 
 const schema = z.object({
   id: z.string().trim().min(1),
-  status: z.enum(["PICKING", "PICKED", "LOADED", "OUT_FOR_DELIVERY", "FAILED"]),
+  status: z.enum(["PICKING", "PICKED", "LOADED", "FAILED"]),
 });
 
 export async function updateShipmentStatusAction(input: unknown) {

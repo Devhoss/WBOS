@@ -90,7 +90,7 @@ export function ReportFilters({
   }
 
   return (
-    <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div className="no-print rounded-lg border bg-card text-card-foreground shadow-sm">
       <div className="flex items-center justify-between px-4 py-3">
         <button
           className="inline-flex items-center gap-2 text-sm font-medium lg:hidden"

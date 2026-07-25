@@ -1,7 +1,7 @@
 "use client";
 
 import { CreditCard } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { recordPaymentAction } from "../../domains/sales/actions/record-payment";
 
@@ -12,7 +12,7 @@ type InvoiceOpt = {
 };
 
 export function RecordPaymentForm({ invoices, preselectedInvoiceId }: { invoices: InvoiceOpt[]; preselectedInvoiceId?: string }) {
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const [invoiceId, setInvoiceId] = useState(preselectedInvoiceId ?? "");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("KWD");
@@ -26,22 +26,24 @@ export function RecordPaymentForm({ invoices, preselectedInvoiceId }: { invoices
   const selectedInvoice = invoices.find((inv) => inv.id === invoiceId);
   const balance = selectedInvoice ? selectedInvoice.totalAmount - selectedInvoice.amountPaid : 0;
 
-  function record() {
+  async function record() {
     if (!invoiceId) { setError("Please select an invoice."); return; }
     if (!amount || Number.parseFloat(amount) <= 0) { setError("Amount must be greater than zero."); return; }
     if (Number.parseFloat(amount) > balance) { setError(`Amount exceeds the outstanding balance (${balance.toFixed(3)}).`); return; }
 
     setError(null);
     setMessage(null);
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const result = await recordPaymentAction({
         invoiceId, amount, currency, method, reference: reference || undefined,
         paidAt: paidAt || undefined, notes: notes || undefined,
       });
-      if (!result.ok) { setError(result.message ?? "Unable to record payment."); return; }
+      if (!result.ok) { setError(result.message ?? "Unable to record payment."); setIsPending(false); return; }
       setMessage("Payment recorded successfully.");
       setTimeout(() => { window.location.href = `/invoices/${invoiceId}`; }, 1500);
-    });
+    } catch { setError("An unexpected error occurred."); }
+    setIsPending(false);
   }
 
   if (invoices.length === 0) {

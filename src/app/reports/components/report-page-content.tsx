@@ -55,7 +55,7 @@ export function ReportPageContent({
       title={title}
       description={description}
       actions={
-        <div className="flex gap-2">
+        <div className="no-print flex gap-2">
           <ExportButton data={data} columns={columns} filename={title.toLowerCase().replace(/\s+/g, "-")} />
           <PrintButton />
         </div>

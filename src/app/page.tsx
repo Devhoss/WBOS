@@ -69,13 +69,13 @@ export default async function DashboardPage() {
           />
         ) : null}
 
-        <AnalyticsDashboard orgId={orgId} />
+        <AnalyticsDashboard orgId={orgId} currency={context.organization.defaultCurrency} />
       </div>
     </AppShell>
   );
 }
 
-async function AnalyticsDashboard({ orgId }: { orgId: string }) {
+async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency: string }) {
   const svc = new DashboardService();
   const [data, trend, topProducts, topCustomers] = await Promise.all([
     svc.getOperationalSummary(orgId),
@@ -104,14 +104,14 @@ async function AnalyticsDashboard({ orgId }: { orgId: string }) {
         <StatCard icon={Package} label="Active Products" value={data.stats.activeProducts} href="/products" />
         <StatCard icon={ShoppingCart} label="Open POs" value={data.stats.openPOs} href="/purchasing/orders" />
         <StatCard icon={Truck} label="Pending Shipments" value={data.stats.pendingShipments} href="/sales/shipments" />
-        <StatCard icon={DollarSign} label="Outstanding" value={`${data.stats.totalUnpaid.toLocaleString()} KWD`} href="/invoices" />
+        <StatCard icon={DollarSign} label="Outstanding" value={`${data.stats.totalUnpaid.toLocaleString()} ${currency}`} href="/invoices" />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <KpiCard label="Today Sales" value={`${data.kpis.salesToday.toFixed(3)} KWD`} icon={BarChart3} />
-        <KpiCard label="This Month" value={`${data.kpis.salesThisMonth.toFixed(3)} KWD`} icon={BarChart3} />
-        <KpiCard label="Outstanding" value={`${data.kpis.outstandingReceivables.toFixed(3)} KWD`} icon={DollarSign} />
-        <KpiCard label="Inventory Value" value={`${data.kpis.inventoryValue.toFixed(3)} KWD`} icon={Package} />
+        <KpiCard label="Today Sales" value={`${data.kpis.salesToday.toFixed(3)} ${currency}`} icon={BarChart3} />
+        <KpiCard label="This Month" value={`${data.kpis.salesThisMonth.toFixed(3)} ${currency}`} icon={BarChart3} />
+        <KpiCard label="Outstanding" value={`${data.kpis.outstandingReceivables.toFixed(3)} ${currency}`} icon={DollarSign} />
+        <KpiCard label="Inventory Value" value={`${data.kpis.inventoryValue.toFixed(3)} ${currency}`} icon={Package} />
         <KpiCard label="Low Stock Items" value={data.kpis.lowStockItems.toString()} icon={Package} />
         <KpiCard label="Overdue Customers" value={data.kpis.overdueCustomers.toString()} icon={Users} />
         <Link href="/reports" className="group relative rounded-lg border bg-background p-5 transition hover:shadow-sm">
@@ -194,7 +194,7 @@ async function AnalyticsDashboard({ orgId }: { orgId: string }) {
                         <p className="text-xs text-muted-foreground">{inv.customer.name}</p>
                       </div>
                       <div className="ml-3 shrink-0 text-right">
-                        <p className="text-xs font-medium">{balance.toLocaleString()} KWD</p>
+                        <p className="text-xs font-medium">{balance.toLocaleString()} {currency}</p>
                         <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{statusLabel[inv.status] ?? inv.status}</span>
                       </div>
                     </Link>

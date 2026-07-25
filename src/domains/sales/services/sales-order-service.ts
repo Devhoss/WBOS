@@ -4,6 +4,10 @@ import { ActivityLogRepository } from "@/domains/activity/repositories/activity-
 import { CustomerRepository } from "@/domains/customers/repositories/customer-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { BusinessSettingsRepository } from "@/domains/settings/repositories/business-settings-repository";
+import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
+import { InvoiceRepository } from "@/domains/sales/repositories/invoice-repository";
+import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
+import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -39,6 +43,9 @@ export class SalesOrderService {
     private readonly balances = new CustomerBalanceService(),
     private readonly settings = new BusinessSettingsRepository(),
     private readonly invoices = new InvoiceService(),
+    private readonly shipmentsRepo = new ShipmentRepository(),
+    private readonly invoicesRepo = new InvoiceRepository(),
+    private readonly tasksRepo = new TaskRepository(),
   ) {}
 
   async create(context: AuthenticatedRequestContext, input: CreateSalesOrderInput) {
@@ -150,7 +157,7 @@ export class SalesOrderService {
       throw new BusinessError("The approver must be a different user than the creator.", "SALES_SELF_APPROVAL");
     }
 
-    await this.orders.updateStatus(context.organizationId, id, "APPROVED");
+    await this.orders.updateStatus(context.organizationId, id, "APPROVED", { approvedById: context.userId });
 
     try {
       await this.invoices.generateFromOrder(context, id);
@@ -182,6 +189,21 @@ export class SalesOrderService {
       throw new BusinessError("This sales order cannot be cancelled.", "SALES_CANNOT_CANCEL");
     }
 
+    if (order.shipments?.some((s) => s.status === "DELIVERED")) {
+      throw new BusinessError(
+        "Order has delivered shipments. Create a return instead.",
+        "SALES_HAS_DELIVERED_SHIPMENTS",
+      );
+    }
+
+    if (order.invoices?.some((i) => i.status === "PARTIALLY_PAID" || i.status === "PAID")) {
+      throw new BusinessError(
+        "Invoice has payments. Create a Credit Note instead.",
+        "SALES_HAS_PAID_INVOICES",
+      );
+    }
+
+    // 1. Cancel the SO itself
     await this.orders.updateStatus(context.organizationId, id, "CANCELLED");
 
     await this.activityLogs.create({
@@ -193,6 +215,69 @@ export class SalesOrderService {
       summary: `Sales order ${order.soNumber} was cancelled.`,
       metadata: { soNumber: order.soNumber },
     });
+
+    // 2. Cancel open pick tasks linked to this SO
+    const openTasks = await prisma.task.findMany({
+      where: {
+        organizationId: context.organizationId,
+        referenceType: "SALES_ORDER",
+        referenceId: id,
+        status: { in: ["SCHEDULED", "ASSIGNED", "IN_PROGRESS"] },
+      },
+      select: { id: true, taskNumber: true },
+    });
+    if (openTasks.length > 0) {
+      const now = new Date();
+      await prisma.task.updateMany({
+        where: { id: { in: openTasks.map((t) => t.id) } },
+        data: { status: "CANCELLED", cancelledAt: now, updatedAt: now },
+      });
+      for (const task of openTasks) {
+        await this.activityLogs.create({
+          organizationId: context.organizationId,
+          userId: context.userId,
+          action: "TASK_CANCELLED",
+          entityType: "Task",
+          entityId: task.id,
+          summary: `Task ${task.taskNumber} was cancelled due to cancellation of sales order ${order.soNumber}.`,
+          metadata: { soNumber: order.soNumber, taskNumber: task.taskNumber, reason: "Sales order cancelled" },
+        });
+      }
+    }
+
+    // 3. Cancel open shipments linked to this SO
+    const cancellableShipments = (order.shipments ?? []).filter(
+      (s) => s.status !== "DELIVERED" && s.status !== "FAILED" && s.status !== "CANCELLED",
+    );
+    for (const shipment of cancellableShipments) {
+      await this.shipmentsRepo.updateStatus(context.organizationId, shipment.id, "CANCELLED");
+      await this.activityLogs.create({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        action: "SHIPMENT_CANCELLED",
+        entityType: "Shipment",
+        entityId: shipment.id,
+        summary: `Shipment ${shipment.shipmentNumber} was cancelled due to cancellation of sales order ${order.soNumber}.`,
+        metadata: { soNumber: order.soNumber, shipmentNumber: shipment.shipmentNumber },
+      });
+    }
+
+    // 4. Cancel draft/issued (unpaid) invoices linked to this SO
+    const cancellableInvoices = (order.invoices ?? []).filter(
+      (inv) => inv.status === "DRAFT" || inv.status === "ISSUED",
+    );
+    for (const invoice of cancellableInvoices) {
+      await this.invoicesRepo.updateStatus(context.organizationId, invoice.id, "CANCELLED");
+      await this.activityLogs.create({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        action: "INVOICE_CANCELLED",
+        entityType: "Invoice",
+        entityId: invoice.id,
+        summary: `Invoice ${invoice.invoiceNumber} was cancelled due to cancellation of sales order ${order.soNumber}.`,
+        metadata: { soNumber: order.soNumber, invoiceNumber: invoice.invoiceNumber },
+      });
+    }
   }
 
   async archive(context: AuthenticatedRequestContext, id: string) {

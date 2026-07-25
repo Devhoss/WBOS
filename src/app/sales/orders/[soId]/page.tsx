@@ -1,7 +1,9 @@
 import {
   ArrowLeft,
   CheckCircle,
+  ExternalLink,
   FileText,
+  RotateCcw,
   Send,
   Truck,
   XCircle,
@@ -17,8 +19,12 @@ import { AuthenticatedRequestContextService } from "@/infrastructure/request/aut
 import { statusColorClass, formatStatus } from "@/components/status-colors";
 import { SalesOrderActions } from "./sales-order-actions";
 import { SalesOrderInvoiceAction } from "./sales-order-invoice-action";
+import { SalesOrderCreatePickTask } from "./sales-order-create-pick-task";
+import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
+import { RelatedDocuments } from "@/components/related-documents";
+import { prisma } from "@/infrastructure/database/prisma";
 
 const statusIcon: Record<string, React.ReactNode> = {
   DRAFT: <Send className="size-4" />,
@@ -71,6 +77,22 @@ export default async function SalesOrderDetailPage({
     order.id,
   );
 
+  const activeShipmentsForPicking = order.shipments.filter(
+    (s) => s.status === "PENDING_PICK" || s.status === "PICKING",
+  );
+  const hasActiveShipments = activeShipmentsForPicking.length > 0;
+  const existingTasks = await new TaskRepository().countActiveByReference(
+    context.organizationId,
+    "SALES_ORDER",
+    order.id,
+  );
+
+  const warehouseWorkers = await prisma.organizationMembership.findMany({
+    where: { organizationId: context.organizationId, role: { in: ["WAREHOUSE", "MANAGER", "ADMIN", "OWNER"] } },
+    include: { user: { select: { id: true, name: true, email: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+
   const archiveableSO = [
     "APPROVED",
     "READY_FOR_INVOICE",
@@ -88,6 +110,7 @@ export default async function SalesOrderDetailPage({
     order.status === "APPROVED" ||
     order.status === "READY_FOR_INVOICE" ||
     order.status === "INVOICED";
+  const hasDeliveredShipment = order.shipments.some((s) => s.status === "DELIVERED");
 
   return (
     <AppShell>
@@ -134,6 +157,25 @@ export default async function SalesOrderDetailPage({
                 >
                   <Truck className="size-4" />
                   Create Shipment
+                </Link>
+              ) : null}
+              {(order.status === "INVOICED" || order.status === "PAID") && hasDeliveredShipment ? (
+                <Link
+                  href={`/returns/new?salesOrderId=${soId}`}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted"
+                >
+                  <RotateCcw className="size-4" />
+                  Return
+                </Link>
+              ) : null}
+              {(order.status !== "DRAFT" && ["APPROVED", "READY_FOR_INVOICE", "INVOICED", "PAID"].includes(order.status)) ? (
+                <Link
+                  href={`/sales/orders/${soId}/print`}
+                  target="_blank"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted"
+                >
+                  <ExternalLink className="size-4" />
+                  Print View
                 </Link>
               ) : null}
             </div>
@@ -198,46 +240,46 @@ export default async function SalesOrderDetailPage({
               </div>
             </section>
 
-            {order.shipments.length > 0 ? (
-              <section className="rounded-lg border p-5">
-                <h2 className="text-sm font-semibold">Shipments</h2>
-                <div className="mt-3 space-y-2">
-                  {order.shipments.map((s) => (
-                    <Link
-                      key={s.id}
-                      href={`/sales/shipments/${s.id}`}
-                      className="flex items-center justify-between rounded-md border p-3 text-sm transition hover:bg-muted/30"
-                    >
-                      <span className="font-medium">{s.shipmentNumber}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatStatus(s.status)} &middot; {s.lines.length}{" "}
-                        line(s)
-                      </span>
-                    </Link>
-                  ))}
+            {hasActiveShipments && existingTasks === 0 ? (
+              <section className="no-print rounded-lg border p-5">
+                <h2 className="text-sm font-semibold">Tasks</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Create a pick task for warehouse workers to fulfill this order on mobile.
+                </p>
+                <div className="mt-3">
+                  <SalesOrderCreatePickTask soId={soId} workers={warehouseWorkers.map((m) => ({ id: m.user.id, name: m.user.name }))} />
                 </div>
               </section>
             ) : null}
 
-            {order.invoices.length > 0 ? (
-              <section className="rounded-lg border p-5">
-                <h2 className="text-sm font-semibold">Invoices</h2>
-                <div className="mt-3 space-y-2">
-                  {order.invoices.map((inv) => (
-                    <Link
-                      key={inv.id}
-                      href={`/invoices/${inv.id}`}
-                      className="flex items-center justify-between rounded-md border p-3 text-sm transition hover:bg-muted/30"
-                    >
-                      <span className="font-medium">{inv.invoiceNumber}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatStatus(inv.status)}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
+            {existingTasks > 0 ? (
+              <section className="no-print rounded-lg border p-5">
+                <h2 className="text-sm font-semibold">Active Tasks</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Pick tasks are currently in progress.
+                </p>
               </section>
             ) : null}
+
+            <div className="no-print"><RelatedDocuments title="Related Documents" documents={[
+              ...(order.shipments.length > 0 ? order.shipments.map((s) => ({
+                href: `/sales/shipments/${s.id}`,
+                label: s.shipmentNumber,
+                subtitle: `Warehouse`,
+                status: s.status,
+              })) : []),
+              ...(order.invoices.length > 0 ? order.invoices.map((inv) => ({
+                href: `/invoices/${inv.id}`,
+                label: inv.invoiceNumber,
+                status: inv.status,
+              })) : []),
+              ...(order.returnOrders.length > 0 ? order.returnOrders.map((r) => ({
+                href: `/returns/${r.id}`,
+                label: r.returnNumber,
+                subtitle: `${r.lines.length} line(s)`,
+                status: r.status,
+              })) : []),
+            ]} /></div>
           </div>
 
           <div className="space-y-6">
@@ -331,7 +373,7 @@ export default async function SalesOrderDetailPage({
             </section>
 
             {showActions ? (
-              <section className="rounded-lg border p-5">
+              <section className="no-print rounded-lg border p-5">
                 <h2 className="text-sm font-semibold">Actions</h2>
                 <div className="mt-3 space-y-2">
                   <SalesOrderActions
@@ -344,7 +386,7 @@ export default async function SalesOrderDetailPage({
             ) : null}
 
             {showInvoice ? (
-              <section className="rounded-lg border p-5">
+              <section className="no-print rounded-lg border p-5">
                 <h2 className="text-sm font-semibold">Invoicing</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {order.status === "APPROVED"
@@ -357,7 +399,7 @@ export default async function SalesOrderDetailPage({
               </section>
             ) : null}
 
-            <DocumentTimeline entries={timeline} />
+            <div className="no-print"><DocumentTimeline entries={timeline} /></div>
           </div>
         </div>
       </div>

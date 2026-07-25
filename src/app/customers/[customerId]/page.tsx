@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, DollarSign, FileText, Plus, Receipt } from "lucide-react";
+import { ArrowLeft, CreditCard, DollarSign, FileText, Plus, Receipt, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -22,7 +22,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const customer = await new CustomerRepository().findById(context.organizationId, customerId);
   if (!customer) notFound();
 
-  const [invoices, payments] = await Promise.all([
+  const [invoices, payments, returnOrders, creditNotes] = await Promise.all([
     prisma.invoice.findMany({
       where: { organizationId: context.organizationId, customerId },
       include: { salesOrder: { select: { soNumber: true } } },
@@ -32,6 +32,15 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       where: { organizationId: context.organizationId, customerId },
       include: { invoice: { select: { invoiceNumber: true } } },
       orderBy: { paidAt: "desc" },
+    }),
+    prisma.returnOrder.findMany({
+      where: { organizationId: context.organizationId, customerId },
+      include: { lines: { select: { id: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.creditNote.findMany({
+      where: { organizationId: context.organizationId, customerId },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
@@ -71,6 +80,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <div className="flex items-center gap-2">
               <Link href={`/sales/orders/new?customerId=${customerId}`} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted">
                 <Plus className="size-4" />New Order
+              </Link>
+              <Link href={`/returns/new?customerId=${customerId}`} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted">
+                <RotateCcw className="size-4" />Create Return
               </Link>
               <Link href={`/payments/new?customerId=${customerId}`} className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:opacity-90">
                 <CreditCard className="size-4" />Record Payment
@@ -157,6 +169,59 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       <span className="ml-2 text-xs text-muted-foreground">{new Date(p.paidAt).toLocaleDateString()}</span>
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-lg border p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Returns</h2>
+              <Link href={`/returns?customerId=${customerId}`} className="text-xs text-primary hover:underline">View all</Link>
+            </div>
+            {returnOrders.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">No returns.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {returnOrders.slice(0, 10).map((r) => (
+                  <Link key={r.id} href={`/returns/${r.id}`}
+                    className="flex items-center justify-between rounded-md border p-3 text-sm transition hover:bg-muted/30">
+                    <div>
+                      <span className="font-medium">{r.returnNumber}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{r.reason.replace(/_/g, " ")}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {r.status.replace(/_/g, " ")} &middot; {r.lines.length} line(s)
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-lg border p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Credit Notes</h2>
+              <Link href={`/credit-notes?customerId=${customerId}`} className="text-xs text-primary hover:underline">View all</Link>
+            </div>
+            {creditNotes.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">No credit notes.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {creditNotes.slice(0, 10).map((cn) => (
+                  <Link key={cn.id} href={`/credit-notes/${cn.id}`}
+                    className="flex items-center justify-between rounded-md border p-3 text-sm transition hover:bg-muted/30">
+                    <div>
+                      <span className="font-medium">{cn.creditNoteNumber}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{cn.reason ?? "—"}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono tabular-nums">{Number(cn.totalAmount).toFixed(3)}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{cn.status.replace(/_/g, " ")}</span>
+                    </div>
+                  </Link>
                 ))}
               </div>
             )}

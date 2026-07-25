@@ -4,6 +4,7 @@ export type TimelineEntry = {
   action: string;
   summary: string;
   createdAt: Date;
+  userName: string | null;
 };
 
 export async function getEntityTimeline(
@@ -17,5 +18,6 @@ export async function getEntityTimeline(
     action: log.action,
     summary: log.summary,
     createdAt: log.createdAt,
+    userName: log.user?.name ?? null,
   }));
 }

@@ -14,7 +14,7 @@ const deliveryStatusFromShipment: Record<string, string> = {
   PICKING: "Picking",
   PICKED: "Picked",
   LOADED: "Loaded",
-  OUT_FOR_DELIVERY: "Out for Delivery",
+
   DELIVERED: "Delivered",
   FAILED: "Failed",
 };
@@ -133,6 +133,19 @@ export class InvoiceService {
         invoiceNumber: documentNumber,
         salesOrderId: order.id,
         soNumber: order.soNumber,
+        totalAmount: Number(order.totalAmount),
+      },
+    });
+
+    await this.activityLogs.create({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: "INVOICE_ISSUED",
+      entityType: "SalesOrder",
+      entityId: order.id,
+      summary: `Invoice ${documentNumber} was issued for this order.`,
+      metadata: {
+        invoiceNumber: documentNumber,
         totalAmount: Number(order.totalAmount),
       },
     });

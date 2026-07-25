@@ -127,4 +127,15 @@ export class ShipmentRepository {
       where: { organizationId, salesOrderId, status: { notIn: ["DELIVERED", "FAILED"] } },
     });
   }
+
+  async listBySalesOrderNonDelivered(organizationId: string, salesOrderId: string) {
+    return prisma.shipment.findMany({
+      where: { organizationId, salesOrderId, status: { notIn: ["DELIVERED", "FAILED"] } },
+      include: {
+        lines: {
+          select: { id: true, salesOrderLineId: true, quantity: true, pickedQuantity: true },
+        },
+      },
+    });
+  }
 }

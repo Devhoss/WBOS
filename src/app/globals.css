@@ -74,3 +74,29 @@ html:not([data-sidebar-ready]) .sidebar-panel,
 html:not([data-sidebar-ready]) .main-area {
   transition-duration: 0s !important;
 }
+
+@media print {
+  html, body {
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body { min-height: auto !important; }
+
+  .no-print, .sidebar-panel, .sidebar-overlay,
+  .app-header, .app-footer {
+    display: none !important;
+  }
+
+  .main-area, main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+}

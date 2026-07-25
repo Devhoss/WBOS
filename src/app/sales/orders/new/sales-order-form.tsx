@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createSalesOrderAction } from "../../../../domains/sales/actions/create-sales-order";
@@ -10,6 +10,13 @@ import { uid } from "@/lib/uid";
 type ProductOption = { id: string; sku: string; name: string; defaultSellingPrice: number; unitOfMeasureId: string; unitOfMeasureCode: string };
 type CustomerOption = { id: string; name: string; code: string | null; creditLimit: number; outstanding: number; openInvoiceCount: number };
 type UnitOption = { id: string; name: string; code: string };
+
+const WHOLE_UNITS = new Set(["PC", "PCS", "EA", "BOX", "CASE", "BAG", "BAGS", "UNIT", "UNITS", "ROLL", "ROLLS", "SHEET", "SHEETS", "SET", "SETS", "PAIR", "PAIRS", "DOZEN"]);
+
+function stepForUnit(id: string, units: UnitOption[]): string {
+  const u = units.find((x) => x.id === id);
+  return u && WHOLE_UNITS.has(u.code) ? "1" : "0.001";
+}
 
 type SOLine = {
   id: string;
@@ -47,7 +54,7 @@ export function SalesOrderForm({
   products: ProductOption[]; customers: CustomerOption[]; units: UnitOption[];
 }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
   const [lines, setLines] = useState<SOLine[]>([createLine()]);
   const [message, setMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<{ currentOutstanding: number; creditLimit: number; orderTotal: number } | null>(null);
@@ -93,7 +100,7 @@ export function SalesOrderForm({
     setLines((current) => (current.length === 1 ? current : current.filter((l) => l.id !== id)));
   }
 
-  function submitOrder() {
+  async function submitOrder() {
     setMessage(null);
     setWarning(null);
 
@@ -109,7 +116,8 @@ export function SalesOrderForm({
 
     const total = subtotal + tax - discountAmount;
 
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const result = await createSalesOrderAction({
         customerId,
         currency,
@@ -141,6 +149,7 @@ export function SalesOrderForm({
 
       if (!result.ok) {
         setMessage(result.message ?? "Unable to create sales order.");
+        setIsPending(false);
         return;
       }
 
@@ -148,20 +157,21 @@ export function SalesOrderForm({
         setWarning(result.warning);
       }
 
-      setMessage("Sales order created.");
-      router.refresh();
-      setCustomerId("");
-      setCurrency("KWD");
-      setTaxAmount("0");
-      setDiscountType("");
-      setDiscountRate("");
-      setExpectedShipDate("");
-      setDeliveryAddress("");
+      setIsPending(false);
+      if (result.data?.id) {
+        router.push(`/sales/orders/${result.data.id}`);
+      } else {
+        setMessage("Sales order created.");
+        window.location.reload();
+      }
       setNotes("");
       setInternalNotes("");
       setCustomerReference("");
       setLines([createLine()]);
-    });
+    } catch {
+      setMessage("An unexpected error occurred.");
+      setIsPending(false);
+    }
   }
 
   return (
@@ -293,7 +303,7 @@ export function SalesOrderForm({
                 </td>
                 <td className="p-3">
                   <input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary"
-                    min="0" step="0.001" type="number" value={line.orderedQuantity}
+                    min="0" step={stepForUnit(line.unitOfMeasureId, units)} type="number" value={line.orderedQuantity}
                     onChange={(e) => updateLine(line.id, { orderedQuantity: e.target.value })} />
                 </td>
                 <td className="p-3">

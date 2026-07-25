@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, Truck } from "lucide-react";
+import { ArrowLeft, ExternalLink, RotateCcw, Truck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -14,6 +14,7 @@ import { statusColorClass, formatStatus } from "@/components/status-colors";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
 import { PrintableInvoice } from "@/components/invoice/printable-invoice";
+import { RelatedDocuments } from "@/components/related-documents";
 
 export async function generateMetadata({ params }: { params: Promise<{ invId: string }> }): Promise<Metadata> {
   const { invId } = await params;
@@ -54,7 +55,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     PICKING: "Picking",
     PICKED: "Picked",
     LOADED: "Loaded",
-    OUT_FOR_DELIVERY: "Out for Delivery",
+
     DELIVERED: "Delivered",
     FAILED: "Failed",
   };
@@ -66,6 +67,22 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const timeline = await getEntityTimeline(context.organizationId, "Invoice", invoice.id);
 
   const canRecordPayment = ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(invoice.status);
+
+  const latestShipmentDelivered = latestShipment?.status === "DELIVERED";
+
+  const returnedQtyByProduct = new Map<string, number>();
+  const totalReturnedValue = invoice.returnOrders
+    .filter((r) => r.status === "COMPLETED")
+    .reduce((sum, r) => {
+      const lines = r.lines ?? [];
+      for (const line of lines) {
+        const rcv = Number(line.receivedQuantity);
+        if (rcv > 0) {
+          returnedQtyByProduct.set(line.productId, (returnedQtyByProduct.get(line.productId) ?? 0) + rcv);
+        }
+      }
+      return sum + lines.reduce((s, l) => s + Number(l.receivedQuantity) * Number(l.unitPrice), 0);
+    }, 0);
 
   const branding = {
     businessName: settings.businessName,
@@ -138,7 +155,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="no-print flex items-center gap-2">
             <Link
               href={`/invoices/${invId}/print`}
               target="_blank"
@@ -155,6 +172,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 Record Payment
               </Link>
             ) : null}
+            {latestShipmentDelivered && ["ISSUED", "PARTIALLY_PAID", "PAID", "OVERDUE"].includes(invoice.status) && (
+              <Link
+                href={`/returns/new?invoiceId=${invoice.id}&customerId=${invoice.customerId}${invoice.salesOrderId ? `&salesOrderId=${invoice.salesOrderId}` : ""}`}
+                className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted"
+              >
+                <RotateCcw className="size-4" />
+                Return
+              </Link>
+            )}
           </div>
         </div>
 
@@ -163,6 +189,42 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
               <PrintableInvoice branding={branding} invoice={invoiceData} />
             </div>
+            {invoice.returnOrders.filter((r) => r.status === "COMPLETED").length > 0 ? (
+              <section className="mt-6 rounded-lg border p-5">
+                <h2 className="text-sm font-semibold">Return Summary</h2>
+                <div className="mt-3 overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/70 text-xs font-semibold uppercase text-muted-foreground">
+                      <tr className="border-b">
+                        <th className="h-10 px-3 text-left">Product</th>
+                        <th className="h-10 px-3 text-right">Sold</th>
+                        <th className="h-10 px-3 text-right">Returned</th>
+                        <th className="h-10 px-3 text-right">Kept</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.lines.filter((l) => (returnedQtyByProduct.get(l.productId) ?? 0) > 0 || (Number(l.quantity) - (returnedQtyByProduct.get(l.productId) ?? 0)) > 0).map((l) => {
+                        const sold = Number(l.quantity);
+                        const returned = returnedQtyByProduct.get(l.productId) ?? 0;
+                        const kept = sold - returned;
+                        return (
+                          <tr key={l.id} className="border-b last:border-b-0 hover:bg-muted/30">
+                            <td className="h-10 px-3">
+                              <span className="font-medium">{l.productName}</span>
+                              {l.productSku ? <span className="ml-2 font-mono text-xs text-muted-foreground">{l.productSku}</span> : null}
+                            </td>
+                            <td className="h-10 px-3 text-right font-mono tabular-nums">{sold.toFixed(3)}</td>
+                            <td className="h-10 px-3 text-right font-mono tabular-nums text-amber-600">{returned > 0 ? returned.toFixed(3) : "—"}</td>
+                            <td className="h-10 px-3 text-right font-mono tabular-nums">{kept.toFixed(3)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
             {invoice.payments.length > 0 ? (
               <section className="mt-6 rounded-lg border p-5">
                 <h2 className="text-sm font-semibold">Payment History</h2>
@@ -194,14 +256,22 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           <div className="space-y-6">
             <section className="rounded-lg border p-5">
-              <h2 className="text-sm font-semibold">Summary</h2>
+              <h2 className="text-sm font-semibold">Financial Summary</h2>
               <dl className="mt-3 space-y-2 text-sm">
                 <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="font-mono">{Number(invoice.subtotal).toFixed(3)}</dd></div>
                 {Number(invoice.discountAmount) > 0 ? <div className="flex justify-between"><dt className="text-muted-foreground">Discount</dt><dd className="font-mono text-red-600">-{Number(invoice.discountAmount).toFixed(3)}</dd></div> : null}
                 {Number(invoice.taxAmount) > 0 ? <div className="flex justify-between"><dt className="text-muted-foreground">Tax</dt><dd className="font-mono">{Number(invoice.taxAmount).toFixed(3)}</dd></div> : null}
-                <div className="flex justify-between border-t pt-2"><dt className="font-semibold">Total</dt><dd className="font-mono font-bold">{Number(invoice.totalAmount).toFixed(3)}</dd></div>
+                <div className="flex justify-between border-t pt-2"><dt className="font-semibold">Invoice Total</dt><dd className="font-mono font-bold">{Number(invoice.totalAmount).toFixed(3)}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Paid</dt><dd className="font-mono text-emerald-600">{Number(invoice.amountPaid).toFixed(3)}</dd></div>
-                <div className="flex justify-between border-t pt-2"><dt className="font-semibold">Balance</dt><dd className="font-mono font-bold">{(Number(invoice.totalAmount) - Number(invoice.amountPaid)).toFixed(3)}</dd></div>
+                {invoice.creditNotes.length > 0 ? (
+                  <div className="flex justify-between"><dt className="text-muted-foreground">Credit Notes</dt><dd className="font-mono text-purple-600">-{Number(invoice.creditedAmount).toFixed(3)}</dd></div>
+                ) : null}
+                <div className="flex justify-between border-t pt-2">
+                  <dt className="font-semibold">Outstanding</dt>
+                  <dd className={`font-mono font-bold ${(Number(invoice.totalAmount) - Number(invoice.amountPaid) - Number(invoice.creditedAmount)) > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                    {(Number(invoice.totalAmount) - Number(invoice.amountPaid) - Number(invoice.creditedAmount)).toFixed(3)}
+                  </dd>
+                </div>
               </dl>
             </section>
 
@@ -256,26 +326,44 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </dl>
             </section>
 
-            <section className="rounded-lg border p-5">
-              <h2 className="text-sm font-semibold">Actions</h2>
-              <div className="mt-3 space-y-2">
-                {canRecordPayment ? (
-                  <Link href={`/payments/new?invoiceId=${invoice.id}`} className="inline-flex h-9 w-full items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:opacity-90">
-                    Record Payment
-                  </Link>
-                ) : null}
-                <Link
-                  href={`/invoices/${invId}/print`}
-                  target="_blank"
-                  className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted"
-                >
-                  <ExternalLink className="size-4" />
-                  Print / PDF
-                </Link>
-              </div>
-            </section>
+            <div className="no-print space-y-6">
+              <RelatedDocuments title="Related Documents" documents={[
+                ...(invoice.returnOrders.length > 0 ? invoice.returnOrders.map((r) => ({
+                  href: `/returns/${r.id}`,
+                  label: r.returnNumber,
+                  subtitle: `${r.lines.length} line(s)`,
+                  status: r.status,
+                })) : []),
+                ...(invoice.creditNotes.length > 0 ? invoice.creditNotes.map((cn) => ({
+                  href: `/credit-notes/${cn.id}`,
+                  label: cn.creditNoteNumber,
+                  subtitle: cn.reason ?? undefined,
+                  status: cn.status,
+                  amount: Number(cn.totalAmount),
+                })) : []),
+              ]} />
 
-            <DocumentTimeline entries={timeline} />
+              <section className="rounded-lg border p-5">
+                <h2 className="text-sm font-semibold">Actions</h2>
+                <div className="mt-3 space-y-2">
+                  {canRecordPayment ? (
+                    <Link href={`/payments/new?invoiceId=${invoice.id}`} className="inline-flex h-9 w-full items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:opacity-90">
+                      Record Payment
+                    </Link>
+                  ) : null}
+                  <Link
+                    href={`/invoices/${invId}/print`}
+                    target="_blank"
+                    className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted"
+                  >
+                    <ExternalLink className="size-4" />
+                    Print / PDF
+                  </Link>
+                </div>
+              </section>
+
+              <DocumentTimeline entries={timeline} />
+            </div>
           </div>
         </div>
       </div>

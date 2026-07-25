@@ -51,13 +51,13 @@ export function CustomerStatementClient() {
       title="Customer Statement"
       description="View detailed statement for a specific customer"
       actions={
-        <div className="flex gap-2">
+        <div className="no-print flex gap-2">
           <ExportButton data={data} columns={columns} filename="customer-statement" />
           <PrintButton />
         </div>
       }
     >
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+      <div className="no-print flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground" htmlFor="cust">Customer</label>
           <select

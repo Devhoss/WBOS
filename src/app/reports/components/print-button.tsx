@@ -10,6 +10,7 @@ export function PrintButton() {
       @media print {
         body * { visibility: hidden; }
         main, main * { visibility: visible; }
+        main .no-print, main .no-print * { display: none !important; }
         main { position: absolute; left: 0; top: 0; width: 100%; }
       }
     `;

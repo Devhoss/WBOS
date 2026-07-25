@@ -1,67 +1,27 @@
 "use client";
 
-import { CheckCircle2, Plus } from "lucide-react";
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { Smartphone } from "lucide-react";
 
-import { BarcodeScanInput } from "@/components/barcode-scan-input";
-import { manualPickAction } from "@/domains/sales/actions/manual-pick";
-import { scanPickAction } from "@/domains/sales/actions/scan-pick";
-
-type ShipmentLine = {
+type LineProps = {
   id: string;
   productName: string;
   productSku: string;
   product: { barcode: string | null } | null;
-  quantity: string;
-  pickedQuantity: string;
+  quantity: number;
+  pickedQuantity: number;
   notes: string | null;
 };
 
 export function PickingList({
   lines,
-  shipmentId,
   status,
 }: {
-  lines: ShipmentLine[];
-  shipmentId: string;
+  lines: LineProps[];
   status: string;
 }) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [manualQty, setManualQty] = useState<Record<string, string>>({});
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const fullyPickedBarcodes = new Set(
-    lines
-      .filter((l) => l.product?.barcode && Number(l.pickedQuantity) >= Number(l.quantity))
-      .map((l) => l.product!.barcode!),
-  );
-
   const totalScanned = lines.reduce((s, l) => s + Number(l.pickedQuantity), 0);
   const totalRequired = lines.reduce((s, l) => s + Number(l.quantity), 0);
   const totalPct = totalRequired > 0 ? Math.round((totalScanned / totalRequired) * 100) : 0;
-
-  async function handleScan(barcode: string) {
-    const result = await scanPickAction({ shipmentId, barcode });
-    if (result.ok) router.refresh();
-    return result;
-  }
-
-  async function handleManualPick(lineId: string) {
-    const qty = Number.parseFloat(manualQty[lineId] || "0");
-    if (qty <= 0) return;
-    setFeedback(null);
-    startTransition(async () => {
-      const result = await manualPickAction({ shipmentId, lineId, quantity: qty });
-      if (!result.ok) {
-        setFeedback(result.message ?? "Pick failed.");
-      } else {
-        setManualQty((prev) => ({ ...prev, [lineId]: "" }));
-        router.refresh();
-      }
-    });
-  }
 
   return (
     <section className="rounded-lg border p-5">
@@ -81,18 +41,18 @@ export function PickingList({
       </div>
 
       {status !== "PICKED" ? (
-        <div className="mt-4 space-y-4">
-          <BarcodeScanInput
-            placeholder="Scan product barcode..."
-            onScan={handleScan}
-            scannedIds={[...fullyPickedBarcodes]}
-            autoFocus
-            scanTimeout={80}
-          />
-
-          {feedback ? (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-950 dark:text-red-400" role="alert">{feedback}</p>
-          ) : null}
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <Smartphone className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                Picking moved to mobile app
+              </p>
+              <p className="mt-1 text-amber-700 dark:text-amber-400">
+                Use the mobile picking app to scan barcodes. Web-based picking has been deprecated.
+              </p>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -135,31 +95,14 @@ export function PickingList({
                   <CheckCircle2 className="size-5 shrink-0 text-emerald-500" />
                 ) : null}
               </div>
-
-              {!isComplete && status !== "PICKED" ? (
-                <div className="mt-3 flex items-center gap-2">
-                  <input
-                    className="h-8 w-20 rounded-md border bg-background px-2 text-right text-sm outline-none focus:border-primary"
-                    min="0.001" step="0.001" type="number"
-                    placeholder="Qty"
-                    value={manualQty[line.id] ?? ""}
-                    onChange={(e) => setManualQty((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleManualPick(line.id); }}
-                  />
-                  <button
-                    className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
-                    disabled={isPending || !manualQty[line.id] || Number(manualQty[line.id]) <= 0}
-                    type="button"
-                    onClick={() => handleManualPick(line.id)}
-                  >
-                    <Plus className="size-3" /> Apply
-                  </button>
-                </div>
-              ) : null}
             </div>
           );
         })}
       </div>
     </section>
   );
+}
+
+function CheckCircle2(props: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
 }

@@ -34,6 +34,8 @@ enum DocumentType {
   WT
   SO
   SHP
+  TSK
+  RN
 }
 
 enum StorageProvider {
@@ -112,6 +114,44 @@ enum ShipmentStatus {
   OUT_FOR_DELIVERY
   DELIVERED
   FAILED
+  CANCELLED
+}
+
+enum TaskType {
+  PICK_ORDER
+  GOODS_RECEIPT
+  CYCLE_COUNT
+  INVENTORY_TRANSFER
+  DELIVERY
+}
+
+enum TaskStatus {
+  SCHEDULED
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskLineStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum TaskReferenceType {
+  SALES_ORDER
+  PURCHASE_ORDER
+  CYCLE_COUNT
+  INVENTORY_TRANSFER
 }
 
 enum InvoiceStatus {
@@ -134,6 +174,42 @@ enum PaymentMethod {
   CHEQUE
   BANK_TRANSFER
   CREDIT_CARD
+  REFUND
+}
+
+enum ReturnStatus {
+  OPEN
+  RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReturnReason {
+  CUSTOMER_CHANGED_MIND
+  DAMAGED
+  WRONG_PRODUCT
+  DEFECTIVE
+  EXPIRED
+  RECALL
+  OTHER
+}
+
+enum ReturnCondition {
+  GOOD
+  DAMAGED
+  EXPIRED
+}
+
+enum ReturnDisposition {
+  RESTOCK
+  SCRAP
+  REPLACE
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
 }
 
 model User {
@@ -160,6 +236,10 @@ model User {
   shipmentsCreated        Shipment[]     @relation("ShipmentCreatedBy")
   cycleCountsCounted      CycleCount[]   @relation("CycleCountCountedBy")
   cycleCountsApproved     CycleCount[]   @relation("CycleCountApprovedBy")
+  tasksAssigned           Task[]         @relation("TaskAssignee")
+  tasksCreated            Task[]         @relation("TaskCreator")
+  returnOrdersCreated      ReturnOrder[]  @relation("ReturnCreatedBy")
+  creditNotesCreated       CreditNote[]   @relation("CreditNoteCreatedBy")
 
   @@map("user")
 }
@@ -246,6 +326,12 @@ model Organization {
   cycleCounts               CycleCount[]
   cycleCountLines           CycleCountLine[]
   payments                  Payment[]
+  tasks                     Task[]
+  taskLines                 TaskLine[]
+  returnOrders              ReturnOrder[]
+  returnOrderLines          ReturnOrderLine[]
+  creditNotes               CreditNote[]
+  creditNoteLines           CreditNoteLine[]
 
   @@map("organizations")
 }
@@ -279,6 +365,8 @@ model Product {
   shipmentLines             ShipmentLine[]
   invoiceLines              InvoiceLine[]
   cycleCountLines           CycleCountLine[]
+  returnOrderLines          ReturnOrderLine[]
+  creditNoteLines           CreditNoteLine[]
 
   @@unique([organizationId, sku])
   @@unique([organizationId, barcode])
@@ -310,6 +398,8 @@ model UnitOfMeasure {
   purchaseOrderLines        PurchaseOrderLine[]
   salesOrderLines           SalesOrderLine[]
   invoiceLines              InvoiceLine[]
+  returnOrderLines          ReturnOrderLine[]
+  creditNoteLines           CreditNoteLine[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -337,6 +427,8 @@ model Customer {
   salesOrders  SalesOrder[]
   invoices     Invoice[]
   payments     Payment[]
+  returnOrders ReturnOrder[]
+  creditNotes  CreditNote[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -410,6 +502,7 @@ model Warehouse {
   inventoryTransactionLinesTo   InventoryTransactionLine[] @relation("InventoryLineToWarehouse")
   shipments                     Shipment[]
   cycleCounts                   CycleCount[]
+  tasks                         Task[]
 
   @@unique([organizationId, code])
   @@index([organizationId, archivedAt])
@@ -531,6 +624,7 @@ model SalesOrder {
   lines        SalesOrderLine[]
   shipments    Shipment[]
   invoices     Invoice[]
+  returnOrders ReturnOrder[]
 
   @@unique([organizationId, soNumber])
   @@index([organizationId, status])
@@ -547,6 +641,7 @@ model SalesOrderLine {
   lineNumber        Int
   orderedQuantity   Decimal  @db.Decimal(18, 6)
   shippedQuantity   Decimal  @db.Decimal(18, 6) @default(0)
+  returnedQuantity  Decimal  @db.Decimal(18, 6) @default(0)
   unitPrice         Decimal  @db.Decimal(18, 3)
   totalPrice        Decimal  @db.Decimal(18, 3)
   productName       String
@@ -576,6 +671,7 @@ model Shipment {
   warehouseId       String
   status            ShipmentStatus @default(PENDING_PICK)
   notes             String?
+  warehouseNotes    String?
   createdById       String
   pickedAt          DateTime?
   loadedAt          DateTime?
@@ -622,6 +718,85 @@ model ShipmentLine {
   @@map("shipment_lines")
 }
 
+model Task {
+  id              String            @id @default(cuid())
+  organizationId  String
+  taskNumber      String
+  type            TaskType
+  status          TaskStatus        @default(ASSIGNED)
+  priority        TaskPriority      @default(NORMAL)
+  title           String
+  subtitle        String?
+  referenceType   TaskReferenceType
+  referenceId     String
+  warehouseId     String
+  assignedToId    String
+  createdById     String
+  data            Json?
+  dueAt           DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledReason String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  assignedTo   User         @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        TaskLine[]
+
+  @@unique([organizationId, taskNumber])
+  @@index([organizationId, type])
+  @@index([organizationId, status])
+  @@index([organizationId, referenceType, referenceId])
+  @@index([organizationId, assignedToId, status])
+  @@map("tasks")
+}
+
+model TaskLine {
+  id                String         @id @default(cuid())
+  organizationId    String
+  taskId            String
+  referenceLineId   String
+  completedQuantity Decimal        @default(0) @db.Decimal(18, 6)
+  status            TaskLineStatus @default(PENDING)
+  notes             String?
+  sortOrder         Int
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([organizationId, referenceLineId])
+  @@map("task_lines")
+}
+
+model PickingAction {
+  id                String   @id @default(cuid())
+  organizationId    String
+  taskId            String
+  taskLineId        String
+  shipmentId        String
+  shipmentLineId    String
+  productId         String
+  barcode           String
+  delta             Decimal  @db.Decimal(18, 6)
+  clientEventId     String
+  deviceId          String?
+  status            String
+  resultingQuantity Decimal  @db.Decimal(18, 6)
+  scannedAt         DateTime?
+  createdById       String
+  createdAt         DateTime @default(now())
+
+  @@unique([organizationId, clientEventId])
+  @@index([organizationId, taskId, taskLineId])
+  @@index([organizationId, shipmentId, shipmentLineId])
+  @@map("picking_actions")
+}
+
 model Invoice {
   id                  String        @id @default(cuid())
   organizationId      String
@@ -637,6 +812,7 @@ model Invoice {
   discountType        DiscountType?
   discountRate        Decimal?      @db.Decimal(18, 3)
   amountPaid          Decimal       @db.Decimal(18, 3) @default(0)
+  creditedAmount      Decimal       @db.Decimal(18, 3) @default(0)
   issuedAt            DateTime?
   dueDate             DateTime?
   paidAt              DateTime?
@@ -655,6 +831,8 @@ model Invoice {
   customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
   lines        InvoiceLine[]
   payments     Payment[]
+  returnOrders ReturnOrder[]
+  creditNotes  CreditNote[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
@@ -685,6 +863,7 @@ model InvoiceLine {
   salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId], references: [id], onDelete: Restrict)
   product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
   unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+  creditNoteLines CreditNoteLine[]
 
   @@index([organizationId, invoiceId])
   @@index([organizationId, productId])
@@ -945,4 +1124,120 @@ model DocumentSequence {
 
   @@unique([organizationId, documentType, year])
   @@map("document_sequences")
+}
+
+model ReturnOrder {
+  id              String        @id @default(cuid())
+  organizationId  String
+  returnNumber    String
+  salesOrderId    String?
+  invoiceId       String?
+  customerId      String
+  status          ReturnStatus  @default(OPEN)
+  reason          ReturnReason
+  notes           String?
+  createdById     String
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledReason String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesOrder   SalesOrder?  @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("ReturnCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        ReturnOrderLine[]
+  creditNote   CreditNote?
+
+  @@unique([organizationId, returnNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@index([organizationId, salesOrderId])
+  @@index([organizationId, invoiceId])
+  @@map("return_orders")
+}
+
+model ReturnOrderLine {
+  id                String            @id @default(cuid())
+  organizationId    String
+  returnOrderId     String
+  productId         String
+  unitOfMeasureId   String
+  invoiceLineId     String?
+  lineNumber        Int
+  expectedQuantity  Decimal           @db.Decimal(18, 6)
+  receivedQuantity  Decimal           @db.Decimal(18, 6) @default(0)
+  disposition       ReturnDisposition?
+  condition         ReturnCondition?
+  notes             String?
+  unitPrice         Decimal           @db.Decimal(18, 3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  returnOrder  ReturnOrder  @relation(fields: [returnOrderId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+
+  @@index([returnOrderId])
+  @@index([organizationId, productId])
+  @@map("return_order_lines")
+}
+
+model CreditNote {
+  id                String           @id @default(cuid())
+  organizationId    String
+  creditNoteNumber  String
+  invoiceId         String
+  returnOrderId     String?   @unique
+  customerId        String
+  status            CreditNoteStatus @default(DRAFT)
+  currency          CurrencyCode     @default(KWD)
+  totalAmount       Decimal          @db.Decimal(18, 3)
+  reason            String?
+  createdById       String
+  issuedAt          DateTime?
+  cancelledAt       DateTime?
+  cancelledReason   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  returnOrder  ReturnOrder? @relation(fields: [returnOrderId], references: [id], onDelete: SetNull)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("CreditNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  lines        CreditNoteLine[]
+
+  @@unique([organizationId, creditNoteNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, customerId])
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id              String   @id @default(cuid())
+  organizationId  String
+  creditNoteId    String
+  invoiceLineId   String
+  productId       String
+  unitOfMeasureId String
+  lineNumber      Int
+  quantity        Decimal  @db.Decimal(18, 6)
+  unitPrice       Decimal  @db.Decimal(18, 3)
+  totalPrice      Decimal  @db.Decimal(18, 3)
+  productName     String
+  productSku      String
+  unitOfMeasureCode String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creditNote   CreditNote   @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  invoiceLine  InvoiceLine  @relation(fields: [invoiceLineId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+
+  @@index([creditNoteId])
+  @@index([organizationId, productId])
+  @@map("credit_note_lines")
 }

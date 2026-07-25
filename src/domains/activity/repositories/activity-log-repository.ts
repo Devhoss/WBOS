@@ -31,7 +31,12 @@ export class ActivityLogRepository {
     return prisma.activityLog.findMany({
       where: { organizationId, entityType, entityId },
       orderBy: { createdAt: "asc" },
-    });
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    }) as unknown as Prisma.ActivityLogGetPayload<{
+      include: { user: { select: { id: true; name: true; email: true } } };
+    }>[];
   }
 
   async listPaginated(params: {
