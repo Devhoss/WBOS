@@ -11,6 +11,12 @@ export class SalesOrderRepository {
     createdById: string,
     input: CreateSalesOrderInput,
   ) {
+    const products = await prisma.product.findMany({
+      where: { organizationId, id: { in: input.lines.map((l) => l.productId) } },
+      select: { id: true, arabicName: true },
+    });
+    const arabicNameMap = new Map(products.map((p) => [p.id, p.arabicName]));
+
     return prisma.salesOrder.create({
       data: {
         organizationId,
@@ -39,6 +45,7 @@ export class SalesOrderRepository {
             unitPrice: new Prisma.Decimal(line.unitPrice),
             totalPrice: new Prisma.Decimal(line.totalPrice),
             productName: line.productName,
+            productArabicName: arabicNameMap.get(line.productId) ?? null,
             productSku: line.productSku,
             unitOfMeasureCode: line.unitOfMeasureCode,
             piecesPerBox: line.piecesPerBox != null ? new Prisma.Decimal(line.piecesPerBox) : null,
@@ -177,6 +184,12 @@ export class SalesOrderRepository {
     id: string,
     input: UpdateSalesOrderInput,
   ) {
+    const products = await prisma.product.findMany({
+      where: { organizationId, id: { in: input.lines.map((l) => l.productId) } },
+      select: { id: true, arabicName: true },
+    });
+    const arabicNameMap = new Map(products.map((p) => [p.id, p.arabicName]));
+
     await prisma.salesOrderLine.deleteMany({ where: { salesOrderId: id, organizationId } });
 
     return prisma.salesOrder.update({
@@ -205,6 +218,7 @@ export class SalesOrderRepository {
             unitPrice: new Prisma.Decimal(line.unitPrice),
             totalPrice: new Prisma.Decimal(line.totalPrice),
             productName: line.productName,
+            productArabicName: arabicNameMap.get(line.productId) ?? null,
             productSku: line.productSku,
             unitOfMeasureCode: line.unitOfMeasureCode,
             piecesPerBox: line.piecesPerBox != null ? new Prisma.Decimal(line.piecesPerBox) : null,

@@ -53,6 +53,7 @@ export default async function CreditNotePrintPage({ params }: { params: Promise<
             lines: creditNote.lines.map((l) => ({
               lineNumber: l.lineNumber,
               productName: l.productName,
+              productArabicName: l.productArabicName ?? null,
               productSku: l.productSku,
               unitOfMeasureCode: l.unitOfMeasureCode,
               quantity: Number(l.quantity),

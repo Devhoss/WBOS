@@ -36,6 +36,14 @@ enum DocumentType {
   SHP
   TSK
   RN
+  QTN
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  EXPIRED
+  CANCELLED
 }
 
 enum StorageProvider {
@@ -240,6 +248,8 @@ model User {
   tasksCreated            Task[]         @relation("TaskCreator")
   returnOrdersCreated      ReturnOrder[]  @relation("ReturnCreatedBy")
   creditNotesCreated       CreditNote[]   @relation("CreditNoteCreatedBy")
+  quotationsCreated        Quotation[]    @relation("QtCreatedBy")
+  quotationsCancelled      Quotation[]    @relation("QtCancelledBy")
 
   @@map("user")
 }
@@ -332,6 +342,8 @@ model Organization {
   returnOrderLines          ReturnOrderLine[]
   creditNotes               CreditNote[]
   creditNoteLines           CreditNoteLine[]
+  quotations                Quotation[]
+  quotationLines            QuotationLine[]
 
   @@map("organizations")
 }
@@ -345,6 +357,7 @@ model Product {
   sku                 String
   barcode             String?
   name                String
+  arabicName          String?
   description         String?
   status              ProductStatus @default(DRAFT)
   defaultSellingPrice Decimal?      @db.Decimal(18, 3)
@@ -367,6 +380,7 @@ model Product {
   cycleCountLines           CycleCountLine[]
   returnOrderLines          ReturnOrderLine[]
   creditNoteLines           CreditNoteLine[]
+  quotationLines            QuotationLine[]
 
   @@unique([organizationId, sku])
   @@unique([organizationId, barcode])
@@ -400,6 +414,7 @@ model UnitOfMeasure {
   invoiceLines              InvoiceLine[]
   returnOrderLines          ReturnOrderLine[]
   creditNoteLines           CreditNoteLine[]
+  quotationLines            QuotationLine[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -429,6 +444,7 @@ model Customer {
   payments     Payment[]
   returnOrders ReturnOrder[]
   creditNotes  CreditNote[]
+  quotations   Quotation[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -608,6 +624,7 @@ model SalesOrder {
   notes               String?
   internalNotes       String?
   customerReference   String?
+  signedInvoicePath   String?
   createdById         String
   approvedById        String?
   archivedById        String?
@@ -645,6 +662,7 @@ model SalesOrderLine {
   unitPrice         Decimal  @db.Decimal(18, 3)
   totalPrice        Decimal  @db.Decimal(18, 3)
   productName       String
+  productArabicName String?
   productSku        String
   unitOfMeasureCode String
   piecesPerBox      Decimal?  @db.Decimal(18, 0)
@@ -661,6 +679,70 @@ model SalesOrderLine {
   @@index([organizationId, salesOrderId])
   @@index([organizationId, productId])
   @@map("sales_order_lines")
+}
+
+model Quotation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  qtNumber        String
+  customerId      String
+  status          QuotationStatus  @default(DRAFT)
+  currency        CurrencyCode     @default(KWD)
+  subtotal        Decimal          @db.Decimal(18, 3)
+  taxAmount       Decimal          @db.Decimal(18, 3) @default(0)
+  totalAmount     Decimal          @db.Decimal(18, 3)
+  discountAmount  Decimal          @db.Decimal(18, 3) @default(0)
+  discountType    DiscountType?
+  discountRate    Decimal?         @db.Decimal(18, 3)
+  issueDate       DateTime         @default(now())
+  validUntil      DateTime?
+  notes           String?
+  terms           String?
+  createdById     String
+  cancelledById   String?
+  cancelledAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User          @relation("QtCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy  User?         @relation("QtCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  lines        QuotationLine[]
+
+  @@unique([organizationId, qtNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, customerId])
+  @@map("quotations")
+}
+
+model QuotationLine {
+  id                String    @id @default(cuid())
+  organizationId    String
+  quotationId       String
+  productId         String
+  unitOfMeasureId   String
+  lineNumber        Int
+  quantity          Decimal   @db.Decimal(18, 6)
+  unitPrice         Decimal   @db.Decimal(18, 3)
+  totalPrice        Decimal   @db.Decimal(18, 3)
+  productName       String
+  productArabicName String?
+  productSku        String
+  unitOfMeasureCode String
+  piecesPerBox      Decimal?  @db.Decimal(18, 0)
+  productBarcode    String?
+  description       String?
+  notes             String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quotation    Quotation    @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, quotationId])
+  @@index([organizationId, productId])
+  @@map("quotation_lines")
 }
 
 model Shipment {
@@ -853,6 +935,7 @@ model InvoiceLine {
   unitPrice         Decimal  @db.Decimal(18, 3)
   totalPrice        Decimal  @db.Decimal(18, 3)
   productName       String
+  productArabicName String?
   productSku        String
   unitOfMeasureCode String
   piecesPerBox      Decimal?  @db.Decimal(18, 0)
@@ -1227,8 +1310,9 @@ model CreditNoteLine {
   quantity        Decimal  @db.Decimal(18, 6)
   unitPrice       Decimal  @db.Decimal(18, 3)
   totalPrice      Decimal  @db.Decimal(18, 3)
-  productName     String
-  productSku      String
+  productName       String
+  productArabicName String?
+  productSku        String
   unitOfMeasureCode String
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

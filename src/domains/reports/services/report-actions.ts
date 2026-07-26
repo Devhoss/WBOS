@@ -54,7 +54,7 @@ export async function getCashCollection(f: ReportFilters) { return financial.cas
 
 /* ── Operational ── */
 export async function getShipmentStatus(f: ReportFilters) { return operational.shipmentStatus(f); }
-export async function getDeliveryPerformance(f: ReportFilters) { return [await operational.deliveryPerformance(f)]; }
+export async function getDeliveryPerformance(f: ReportFilters) { return operational.deliveryPerformance(f); }
 export async function getPickingPerformance(f: ReportFilters) { return [await operational.pickingPerformance(f)]; }
 export async function getBarcodeActivity(f: ReportFilters) { return operational.barcodeActivity(f); }
 export async function getWarehouseActivity(f: ReportFilters) { return operational.warehouseActivity(f); }

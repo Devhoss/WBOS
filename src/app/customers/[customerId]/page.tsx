@@ -22,7 +22,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const customer = await new CustomerRepository().findById(context.organizationId, customerId);
   if (!customer) notFound();
 
-  const [invoices, payments, returnOrders, creditNotes] = await Promise.all([
+  const [invoices, payments, returnOrders, creditNotes, quotations] = await Promise.all([
     prisma.invoice.findMany({
       where: { organizationId: context.organizationId, customerId },
       include: { salesOrder: { select: { soNumber: true } } },
@@ -41,6 +41,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     prisma.creditNote.findMany({
       where: { organizationId: context.organizationId, customerId },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.quotation.findMany({
+      where: { organizationId: context.organizationId, customerId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
     }),
   ]);
 
@@ -227,6 +232,29 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             )}
           </section>
         </div>
+
+        <section className="rounded-lg border p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Quotations</h2>
+            <Link href={`/quotations/new?customerId=${customerId}`} className="text-xs text-primary hover:underline">New</Link>
+          </div>
+          {quotations.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">No quotations.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {quotations.map((q) => (
+                <Link key={q.id} href={`/quotations/${q.id}`}
+                  className="flex items-center justify-between rounded-md border p-3 text-sm transition hover:bg-muted/30">
+                  <div>
+                    <span className="font-medium">{q.qtNumber}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{q.status.replace(/_/g, " ")}</span>
+                  </div>
+                  <span className="font-mono tabular-nums text-xs">{Number(q.totalAmount).toFixed(3)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
 
         <section className="rounded-lg border p-5">
           <h2 className="text-sm font-semibold">Customer Details</h2>

@@ -27,7 +27,6 @@ export function SignInForm() {
       }
 
       router.push("/");
-      router.refresh();
     });
   }
 

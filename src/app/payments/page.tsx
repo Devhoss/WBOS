@@ -42,7 +42,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             <p className="mt-1 text-xs text-muted-foreground">Record payments against issued invoices.</p>
           </div>
         ) : (
-          <div className="rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/70 text-xs font-semibold uppercase text-muted-foreground">
                 <tr className="border-b">

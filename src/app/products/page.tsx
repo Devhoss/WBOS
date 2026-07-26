@@ -47,6 +47,7 @@ export default async function ProductsPage() {
             sku: product.sku,
             barcode: product.barcode,
             name: product.name,
+            arabicName: product.arabicName,
             description: product.description,
             categoryId: product.categoryId,
             category: product.category.name,

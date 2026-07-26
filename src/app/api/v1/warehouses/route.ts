@@ -1,0 +1,18 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { prisma } from "@/infrastructure/database/prisma";
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+
+export async function GET(req: NextRequest) {
+  const { organizationId } = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+
+  const warehouses = await prisma.warehouse.findMany({
+    where: { organizationId, archivedAt: null },
+    select: { id: true, name: true, code: true, address: true },
+    orderBy: { name: "asc" },
+  });
+
+  return NextResponse.json({
+    data: warehouses.map((w) => ({ ...w, isActive: true })),
+  });
+}

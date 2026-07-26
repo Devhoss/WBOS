@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/app-shell";
 import { OnboardingPanel } from "@/components/onboarding-panel";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { getCachedContext } from "@/infrastructure/request/authenticated-request-context";
 import { prisma } from "@/infrastructure/database/prisma";
 
 import { DashboardService } from "./dashboard-service";
@@ -16,7 +16,7 @@ import { TrendChart, TopItemsChart } from "./simple-bar-chart";
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const context = await new AuthenticatedRequestContextService().getCurrentContext();
+  const context = await getCachedContext();
   const orgId = context.organizationId;
 
   const [productCount, customerCount, supplierCount, warehouseCount, soCount, poCount] =
@@ -43,7 +43,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-normal">Dashboard</h1>
@@ -126,7 +126,7 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-lg border">
+        <section className="min-w-0 rounded-lg border">
           <div className="border-b px-5 py-4"><h2 className="text-sm font-semibold">Monthly Sales Trend</h2></div>
           <div className="p-4">
             {trend.length > 0 ? <TrendChart data={trend} /> : (
@@ -134,7 +134,7 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
             )}
           </div>
         </section>
-        <section className="rounded-lg border">
+        <section className="min-w-0 rounded-lg border">
           <div className="border-b px-5 py-4"><h2 className="text-sm font-semibold">Top Products</h2></div>
           <div className="p-4">
             {topProducts.length > 0 ? <TopItemsChart data={topProducts} /> : (
@@ -145,7 +145,7 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <section className="rounded-lg border lg:col-span-2">
+        <section className="min-w-0 rounded-lg border lg:col-span-2">
           <div className="flex items-center justify-between border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Recent Activity</h2>
           </div>
@@ -167,7 +167,7 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
             </div>
           )}
         </section>
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <section className="rounded-lg border">
             <div className="border-b px-5 py-4"><h2 className="text-sm font-semibold">Top Customers</h2></div>
             <div className="p-4">
@@ -211,24 +211,24 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
 
 function StatCard({ icon: Icon, label, value, href }: { icon: React.ComponentType<{ className?: string }>; label: string; value: number | string; href: string }) {
   return (
-    <Link className="rounded-lg border bg-background p-5 transition hover:shadow-sm" href={href}>
+    <Link className="rounded-lg border bg-background p-4 sm:p-5 transition hover:shadow-sm" href={href}>
       <div className="flex size-10 items-center justify-center rounded-md bg-muted">
         <Icon className="size-5 text-primary" />
       </div>
-      <p className="mt-4 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+      <p className="mt-4 truncate text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-1 truncate text-sm text-muted-foreground">{label}</p>
     </Link>
   );
 }
 
 function KpiCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
   return (
-    <div className="rounded-lg border bg-background p-5">
+    <div className="rounded-lg border bg-background p-4 sm:p-5">
       <div className="flex size-10 items-center justify-center rounded-md bg-muted">
         <Icon className="size-5 text-primary" />
       </div>
-      <p className="mt-4 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+      <p className="mt-4 truncate text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-1 truncate text-sm text-muted-foreground">{label}</p>
     </div>
   );
 }

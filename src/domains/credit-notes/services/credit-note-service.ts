@@ -20,10 +20,17 @@ export class CreditNoteService {
       prefix: "CN",
     });
 
+    const products = await prisma.product.findMany({
+      where: { organizationId: context.organizationId, id: { in: input.lines.map((l) => l.productId) } },
+      select: { id: true, arabicName: true },
+    });
+    const arabicNameMap = new Map(products.map((p) => [p.id, p.arabicName]));
+
     const creditNote = await this.repo.create(context.organizationId, documentNumber, context.userId, {
       ...input,
       lines: input.lines.map((line, index) => ({
         ...line,
+        productArabicName: arabicNameMap.get(line.productId) ?? null,
         lineNumber: index + 1,
       })),
     });
@@ -192,7 +199,7 @@ export class CreditNoteService {
       }),
       prisma.product.findMany({
         where: { organizationId: context.organizationId, id: { in: productIds } },
-        select: { id: true, name: true, sku: true },
+        select: { id: true, name: true, arabicName: true, sku: true },
       }),
       prisma.unitOfMeasure.findMany({
         where: { id: { in: uomIds } },
@@ -216,6 +223,7 @@ export class CreditNoteService {
         unitPrice: Number(l.unitPrice),
         totalPrice: Number(l.unitPrice) * Number(l.receivedQuantity),
         productName: product?.name ?? "",
+        productArabicName: product?.arabicName ?? null,
         productSku: product?.sku ?? "",
         unitOfMeasureCode: uom?.code ?? "",
       };

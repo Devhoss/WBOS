@@ -66,8 +66,6 @@ export class InvoiceService {
     });
 
     const customer = order.customer;
-    const dueDate = new Date(now);
-    dueDate.setDate(dueDate.getDate() + 30);
 
     const discountAmount = new Prisma.Decimal(order.discountAmount);
     const hasDiscount = discountAmount.gt(0);
@@ -85,7 +83,7 @@ export class InvoiceService {
       customerName: customer.name,
       customerAddress: customer.address,
       paymentTerms: order.notes ?? null,
-      dueDate,
+      dueDate: null,
       notes: order.notes ?? null,
       warehouseName,
       deliveryStatus,
@@ -112,6 +110,7 @@ export class InvoiceService {
           unitPrice: new Prisma.Decimal(line.unitPrice),
           totalPrice: new Prisma.Decimal(line.totalPrice),
           productName: line.productName,
+          productArabicName: line.productArabicName ?? null,
           productSku: line.productSku,
           unitOfMeasureCode: line.unitOfMeasureCode,
           piecesPerBox,

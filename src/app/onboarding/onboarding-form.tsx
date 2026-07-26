@@ -25,7 +25,6 @@ export function OnboardingForm() {
       }
 
       router.push("/");
-      router.refresh();
     });
   }
 

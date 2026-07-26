@@ -6,67 +6,12 @@ import { useCallback } from "react";
 import {
   DocumentProvider,
   t,
-  useDocument,
   type BrandingData,
 } from "@/components/document-engine";
 
-import {
-  InvoiceHeader,
-  InvoiceCompanyInfo,
-  InvoiceCustomerInfo,
-  InvoiceMetadata,
-  InvoiceItemsTable,
-  InvoiceTotals,
-  InvoiceSignatures,
-  InvoiceBarcodeSection,
-  InvoiceFooter,
-  type InvoiceData,
-} from "./sections";
+import type { InvoiceData } from "./sections";
 
-function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
-  const { branding, language } = useDocument();
-  const isRtl = language === "arabic";
-  const dir = isRtl ? "rtl" : "ltr";
-
-  const sectionProps = { branding, invoice, language, isRtl };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px", padding: "0" }} dir={dir}>
-      <InvoiceHeader {...sectionProps} />
-
-      <div style={{ borderTop: "1px solid #d1d5db" }} />
-
-      <InvoiceCompanyInfo {...sectionProps} />
-
-      <InvoiceCustomerInfo {...sectionProps} />
-
-      <InvoiceMetadata {...sectionProps} />
-
-      <InvoiceItemsTable {...sectionProps} />
-
-      <InvoiceTotals {...sectionProps} />
-
-      {invoice.notes ? (
-        <div>
-          <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#4b5563" }}
-            className={isRtl ? "text-right" : "text-left"}>
-            {t("customerNotes", language)}
-          </div>
-          <div style={{ marginTop: "4px", whiteSpace: "pre-wrap", fontSize: "13px", lineHeight: 1.6, color: "#374151" }}>
-            {invoice.notes}
-          </div>
-        </div>
-      ) : null}
-
-      <InvoiceSignatures {...sectionProps} />
-      <div style={{ marginTop: "-8px" }} />
-
-      <InvoiceBarcodeSection {...sectionProps} />
-
-      <InvoiceFooter {...sectionProps} />
-    </div>
-  );
-}
+import { InvoiceDocumentContent } from "./invoice-document-content";
 
 export function PrintableInvoice({
   branding,
@@ -90,10 +35,13 @@ export function PrintableInvoice({
     document.body.removeChild(a);
   }, [invoice.id, invoice.invoiceNumber]);
 
+  const languageMode = branding.documentLanguage as "english" | "arabic" | "bilingual";
+  const isRtl = languageMode === "arabic";
+
   return (
     <DocumentProvider
       branding={branding}
-      documentTitle={t("invoice", branding.documentLanguage as "english" | "arabic" | "bilingual")}
+      documentTitle={t("invoice", languageMode)}
       documentNumber={invoice.invoiceNumber}
     >
       {showActions ? (
@@ -116,7 +64,13 @@ export function PrintableInvoice({
       ) : null}
 
       <div className="bg-white" style={{ padding: "0" }}>
-        <InvoiceDocument invoice={invoice} />
+        <InvoiceDocumentContent
+          branding={branding}
+          invoice={invoice}
+          language={languageMode}
+          isRtl={isRtl}
+          showBarcode
+        />
       </div>
     </DocumentProvider>
   );

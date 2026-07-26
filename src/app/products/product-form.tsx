@@ -18,6 +18,7 @@ export type ProductFormValue = {
   sku: string;
   barcode: string | null;
   name: string;
+  arabicName: string | null;
   description: string | null;
   categoryId: string;
   supplierId: string | null;
@@ -55,6 +56,7 @@ export function ProductForm({
         sku: String(formData.get("sku") ?? "").toUpperCase(),
         barcode: String(formData.get("barcode") ?? ""),
         name: String(formData.get("name") ?? ""),
+        arabicName: String(formData.get("arabicName") ?? ""),
         description: String(formData.get("description") ?? ""),
         categoryId: String(formData.get("categoryId") ?? ""),
         supplierId: String(formData.get("supplierId") ?? ""),
@@ -104,6 +106,14 @@ export function ProductForm({
             defaultValue={product?.name}
             name="name"
             required
+          />
+        </label>
+        <label className="space-y-2 text-sm">
+          <span className="font-medium">Arabic Name</span>
+          <input
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+            defaultValue={product?.arabicName ?? ""}
+            name="arabicName"
           />
         </label>
         <label className="space-y-2 text-sm">

@@ -53,7 +53,7 @@ export default async function ShipmentsListPage({ searchParams }: { searchParams
             <p className="mt-1 text-xs text-muted-foreground">Create a new shipment to get started.</p>
           </div>
         ) : (
-          <div className="rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/70 text-xs font-semibold uppercase text-muted-foreground">
                 <tr className="border-b">

@@ -57,6 +57,7 @@ export default async function SalesOrderPrintPage({ params }: { params: Promise<
             lines: order.lines.map((l) => ({
               lineNumber: l.lineNumber,
               productName: l.productName,
+              productArabicName: l.productArabicName ?? null,
               productSku: l.productSku,
               unitOfMeasureCode: l.unitOfMeasureCode,
               orderedQuantity: Number(l.orderedQuantity),

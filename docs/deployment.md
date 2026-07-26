@@ -171,8 +171,7 @@ curl http://localhost:3000/api/health
 | `BETTER_AUTH_URL` | No | `http://localhost:3000` | Public URL of the application. |
 | `PORT` | No | `3000` | Host port to bind the application to. |
 | `WBOS_STORAGE_ROOT` | No | `./storage` | Upload storage directory. In Docker, this maps to the `uploads` volume. |
-| `WBOS_BACKUP_DIR` | No | `./backups` | Backup output directory. |
-| `WBOS_BACKUP_RETENTION_DAYS` | No | `30` | Number of days to retain backups. |
+| `WBOS_BACKUP_DIR` | No | `./backups` | Backup root directory. Contains tiered subdirectories: `daily/`, `weekly/`, `monthly/`, `yearly/`, `uploads/`. |
 
 ### Database URL Formats
 
@@ -317,16 +316,49 @@ docker compose exec app node prisma/demo-seed.mjs
 
 ## Backup
 
-### Automatic Daily Backup (Linux)
+### Overview
 
-Add a cron job:
+WBOS uses a **tiered retention backup system** with five tiers:
+
+| Tier | Directory | Retention | When Created |
+|------|-----------|-----------|-------------|
+| **Daily** | `daily/` | Last **7** kept | Every backup run |
+| **Weekly** | `weekly/` | Last **4** kept | Sunday promotion |
+| **Monthly** | `monthly/` | Last **12** kept | 1st of month promotion |
+| **Yearly** | `yearly/` | **Kept forever** | Dec 31 promotion |
+| **Uploads** | `uploads/` | Last **7** kept | Every run (if `WBOS_STORAGE_ROOT` is set) |
+
+Backup layout:
+
+```
+<backup-root>/
+├── daily/
+│   └── wbos_db_YYYYMMDD_HHMMSS.sql.gz
+├── weekly/
+│   └── wbos_db_YYYYMMDD_HHMMSS.sql.gz
+├── monthly/
+│   └── wbos_db_YYYYMMDD_HHMMSS.sql.gz
+├── yearly/
+│   └── wbos-YYYY-12-31.sql.gz
+├── uploads/
+│   └── wbos_uploads_YYYYMMDD_HHMMSS.tar.gz
+└── backup-manifest.json
+```
+
+The promoted backup is a **copy** of that day's daily backup — no extra database load.
+
+### Automatic Daily Backup (Linux — Recommended)
+
+Add a cron job on the host:
 
 ```bash
 sudo crontab -e
 
-# Add this line to run backup daily at 2:00 AM
-0 2 * * * cd /path/to/wbos && docker compose exec -T postgres pg_dump -U wbos wbos | gzip > ./backups/wbos_backup_$(date +\%Y\%m\%d_\%H\%M\%S).sql.gz
+# Run the backup script daily at 2:00 AM
+0 2 * * * cd /opt/wbos && WBOS_STORAGE_ROOT=/opt/wbos/storage WBOS_BACKUP_DIR=/opt/wbos/backups docker compose exec -T app ./scripts/backup.sh
 ```
+
+> **Tip**: The backup script runs **inside** the container so it has direct access to `DATABASE_URL`. It creates tiered backups and handles retention cleanup automatically.
 
 ### Manual Backup
 
@@ -334,27 +366,17 @@ sudo crontab -e
 # Via npm (requires DATABASE_URL in environment)
 npm run backup
 
-# Via Docker
-docker compose exec -T postgres pg_dump -U wbos wbos | gzip > ./backups/wbos_manual_$(date +%Y%m%d_%H%M%S).sql.gz
-
 # Via script (Linux)
 ./scripts/backup.sh
+
+# Via script with uploads
+WBOS_STORAGE_ROOT=./storage ./scripts/backup.sh
 
 # Via script (Windows PowerShell)
 .\scripts\backup.ps1
 ```
 
-### Backup Retention
-
-The backup scripts automatically clean up files older than the retention period (default: 30 days). Override with:
-
-```bash
-WBOS_BACKUP_RETENTION_DAYS=90 ./scripts/backup.sh
-```
-
-### Backup Directory
-
-Backups are stored in `./backups/` by default. Override with:
+### Customizing Backup Root
 
 ```bash
 WBOS_BACKUP_DIR=/mnt/nas/backups ./scripts/backup.sh
@@ -366,60 +388,95 @@ WBOS_BACKUP_DIR=/mnt/nas/backups ./scripts/backup.sh
 
 ### Prerequisites
 
-- A `.sql.gz` backup file in the `./backups/` directory
+- A `.sql.gz` backup file in one of the tiered directories under `<backup-root>/`
 - A running PostgreSQL instance (can be empty)
 
-### Restore Latest Backup
+### Interactive Restore
+
+Lists all backups across tiers and lets you pick:
 
 ```bash
-# Via npm
-npm run restore
-
-# Via Docker
-gunzip -c ./backups/wbos_backup_20250101_020000.sql.gz | docker compose exec -T postgres psql -U wbos wbos
-
-# Via script (Linux)
 ./scripts/restore.sh
-
-# Via script (Windows)
-.\scripts\restore.ps1
 ```
 
-### Restore a Specific Backup
+### Restore Latest Backup (any tier)
 
 ```bash
-./scripts/restore.sh ./backups/wbos_backup_20250101_020000.sql.gz
+./scripts/restore.sh --latest
 ```
 
-### Restore into Empty Database
+### Restore Latest from a Specific Tier
 
 ```bash
-# 1. Stop the app
+./scripts/restore.sh --tier daily
+./scripts/restore.sh --tier weekly
+./scripts/restore.sh --tier monthly
+./scripts/restore.sh --tier yearly
+```
+
+### Restore a Specific Backup File
+
+```bash
+./scripts/restore.sh /path/to/wbos_db_20260725_020000.sql.gz
+```
+
+### List Available Backups
+
+```bash
+# All tiers
+./scripts/restore.sh --list-all
+
+# Specific tier
+./scripts/restore.sh --list daily
+```
+
+### Restore Uploaded Files
+
+```bash
+# Latest uploads backup
+./scripts/restore.sh --restore-uploads
+
+# Specific archive
+./scripts/restore.sh --restore-uploads /path/to/wbos_uploads_20260725_020000.tar.gz
+```
+
+### Full Database Restore Procedure (tested)
+
+This procedure has been tested and verified:
+
+```bash
+# 1. Stop the app to prevent connections
 docker compose down app
 
 # 2. Drop and recreate the database
 docker compose exec postgres psql -U wbos -c "DROP DATABASE IF EXISTS wbos;"
 docker compose exec postgres psql -U wbos -c "CREATE DATABASE wbos;"
 
-# 3. Restore
-gunzip -c ./backups/wbos_backup_latest.sql.gz | docker compose exec -T postgres psql -U wbos wbos
+# 3. Restore the database (latest daily backup in this example)
+#    Using --tier picks the most recent backup in that tier
+docker compose exec -T app ./scripts/restore.sh --tier daily
 
-# 4. Restart the app
+# 4. (If applicable) Restore uploaded files
+docker compose exec -T app ./scripts/restore.sh --restore-uploads
+
+# 5. Start the app
 docker compose up -d app
 
-# 5. Run migrations (in case schema changed)
+# 6. Run migrations (in case schema changed between backup and now)
 docker compose exec app npx prisma migrate deploy
-```
 
-### Verify Restore
-
-```bash
-# Check that data exists
+# 7. Verify
+docker compose exec app npx prisma migrate status
+curl http://localhost:3000/api/health
 docker compose exec postgres psql -U wbos wbos -c "SELECT count(*) FROM \"Organization\";"
 docker compose exec postgres psql -U wbos wbos -c "SELECT count(*) FROM \"Product\";"
+```
 
-# Check app health
-curl http://localhost:3000/api/health
+### Via npm
+
+```bash
+# Restore latest (interactive)
+npm run restore
 ```
 
 ---
@@ -516,14 +573,17 @@ docker compose up -d
 # 1. Stop the app
 docker compose down app
 
-# 2. Restore from latest backup (see Restore section)
-gunzip -c ./backups/wbos_backup_latest.sql.gz | docker compose exec -T postgres psql -U wbos wbos
+# 2. Restore from latest backup (see full Restore section)
+docker compose exec -T app ./scripts/restore.sh --tier daily
 
 # 3. Restart
 docker compose up -d
 
 # 4. Run migrations if needed
 docker compose exec app npx prisma migrate deploy
+
+# 5. Verify
+curl http://localhost:3000/api/health
 ```
 
 ### Scenario: Accidental Container Deletion
@@ -546,14 +606,20 @@ docker compose up -d postgres
 # 2. Create the database
 docker compose exec postgres psql -U wbos -c "CREATE DATABASE wbos;"
 
-# 3. Restore from backup
-gunzip -c ./backups/wbos_backup_latest.sql.gz | docker compose exec -T postgres psql -U wbos wbos
+# 3. Restore from latest backup
+docker compose exec -T app ./scripts/restore.sh --tier daily
 
-# 4. Start the app
+# 4. (If applicable) Restore uploaded files
+docker compose exec -T app ./scripts/restore.sh --restore-uploads
+
+# 5. Start the app
 docker compose up -d app
 
-# 5. Run migrations
+# 6. Run migrations
 docker compose exec app npx prisma migrate deploy
+
+# 7. Verify
+curl http://localhost:3000/api/health
 ```
 
 ---
@@ -705,28 +771,33 @@ docker compose exec app node -e "const { chromium } = require('playwright'); (as
 ### Backup Fails
 
 ```bash
-# Check if backups directory exists
-ls -la ./backups/
+# Check if backup root exists
+ls -la /opt/wbos/backups/
 
 # Check disk space
 df -h
 
-# Run backup manually with verbose output
-docker compose exec -T postgres pg_dump -U wbos wbos -v
+# Run the backup script manually to see error output
+docker compose exec -T app ./scripts/backup.sh
+
+# Check the backup manifest for recent entries
+docker compose exec app cat /app/backups/backup-manifest.json 2>/dev/null | head -20
 ```
 
 ### Restore Fails
 
 ```bash
 # Verify the backup file is valid
-file ./backups/wbos_backup_*.sql.gz
-gunzip -t ./backups/wbos_backup_*.sql.gz || echo "File is corrupt"
+gunzip -t /opt/wbos/backups/daily/wbos_db_latest.sql.gz 2>/dev/null || echo "File is corrupt"
 
 # Check that the database is accessible
 docker compose exec postgres psql -U wbos -c "SELECT 1;"
 
+# List available backups
+docker compose exec -T app ./scripts/restore.sh --list-all
+
 # Try restoring with verbose output
-gunzip -c ./backups/wbos_backup_latest.sql.gz | docker compose exec -T postgres psql -U wbos wbos -v ON_ERROR_STOP=1
+gunzip -c /opt/wbos/backups/daily/wbos_db_*.sql.gz | docker compose exec -T postgres psql -U wbos wbos -v ON_ERROR_STOP=1
 ```
 
 ### Disk Space Low
@@ -735,8 +806,14 @@ gunzip -c ./backups/wbos_backup_latest.sql.gz | docker compose exec -T postgres 
 # Check disk usage
 df -h
 
-# Clean up old backups
-find ./backups -name "wbos_backup_*.sql.gz" -type f -mtime +30 -delete
+# Check backup sizes by tier
+du -sh /opt/wbos/backups/*/
+
+# Manually prune daily backups older than 14 days
+find /opt/wbos/backups/daily -name "wbos_db_*.sql.gz" -type f -mtime +14 -delete
+
+# Prune all uploads backups (only the daily DB is needed for DR)
+rm -rf /opt/wbos/backups/uploads/*
 
 # Clean up Docker
 docker system prune -f
@@ -800,11 +877,15 @@ Returns JSON:
 {
   "healthy": true,
   "app": { "uptime": 3600, "status": "running" },
-  "database": { "connected": true, "latency": "3ms" },
-  "prisma": { "connected": true },
-  "playwright": { "available": true },
-  "storage": { "path": "./storage", "exists": true, "writable": true },
-  "version": "0.1.0",
+  "database": { "ok": true, "latency": "3ms" },
+  "prisma": { "ok": true, "organizationExists": true },
+  "storage": { "root": "./storage", "exists": true, "writable": true, "uploads": true },
+  "backups": {
+    "root": "./backups",
+    "totalFiles": 15,
+    "tiers": { "daily": 7, "weekly": 4, "monthly": 3, "yearly": 0, "uploads": 1 },
+    "latestAgeHours": 6
+  },
   "environment": "production",
   "serverTime": "2025-01-01T00:00:00.000Z"
 }
@@ -824,7 +905,7 @@ Add an external monitoring service (e.g., Uptime Kuma) to ping `http://your-serv
 |---|---|---|
 | `./postgres-data/` | Database files | Docker volume |
 | `./uploads/` | User-uploaded files | Docker volume |
-| `./backups/` | Database dumps | Host directory (mounted) |
+| `./backups/` | Tiered database dumps (daily/weekly/monthly/yearly/uploads) | Host directory (mounted) |
 
 ### Docker Image
 
@@ -865,10 +946,10 @@ The stack is tuned for low-power homelab servers:
 | `.env.example` | Documented environment template |
 | `.dockerignore` | Build context exclusions |
 | `prisma/schema.prisma` | Schema + generator config with cross-platform `binaryTargets` |
-| `scripts/backup.sh` | Linux backup script |
-| `scripts/backup.ps1` | Windows backup script |
-| `scripts/restore.sh` | Linux restore script |
-| `scripts/restore.ps1` | Windows restore script |
+| `scripts/backup.sh` | Linux tiered backup script |
+| `scripts/backup.ps1` | Windows tiered backup script |
+| `scripts/restore.sh` | Linux restore script with tier selection |
+| `scripts/restore.ps1` | Windows restore script with tier selection |
 | `scripts/startup-validate.js` | Container startup validation |
 | `src/app/api/health/route.ts` | Health check API endpoint |
 | `src/app/health/page.tsx` | Health dashboard page |

@@ -146,26 +146,31 @@ export class DashboardService {
   }
 
   async getSalesTrend(organizationId: string): Promise<TrendPoint[]> {
-    const months: TrendPoint[] = [];
-    for (let i = 5; i >= 0; i--) {
+    const ranges = Array.from({ length: 6 }, (_, i) => {
       const d = new Date();
-      d.setMonth(d.getMonth() - i);
+      d.setMonth(d.getMonth() - (5 - i));
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      const result = await prisma.invoice.aggregate({
-        where: {
-          organizationId,
-          status: { in: ["ISSUED", "PAID", "PARTIALLY_PAID"] },
-          issuedAt: { gte: monthStart, lt: monthEnd },
-        },
-        _sum: { totalAmount: true },
-      });
-      months.push({
-        label: monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        value: Number(result._sum.totalAmount ?? 0),
-      });
-    }
-    return months;
+      return { monthStart, monthEnd };
+    });
+
+    const results = await Promise.all(
+      ranges.map(({ monthStart, monthEnd }) =>
+        prisma.invoice.aggregate({
+          where: {
+            organizationId,
+            status: { in: ["ISSUED", "PAID", "PARTIALLY_PAID"] },
+            issuedAt: { gte: monthStart, lt: monthEnd },
+          },
+          _sum: { totalAmount: true },
+        }),
+      ),
+    );
+
+    return ranges.map(({ monthStart }, i) => ({
+      label: monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      value: Number(results[i]._sum.totalAmount ?? 0),
+    }));
   }
 
   async getTopProducts(organizationId: string): Promise<TopItem[]> {

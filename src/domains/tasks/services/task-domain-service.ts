@@ -422,6 +422,31 @@ export class TaskDomainService {
           taskLine.referenceLineId,
           delta,
         );
+
+        const shipmentLine = await prisma.shipmentLine.findFirst({
+          where: { id: taskLine.referenceLineId, organizationId: context.organizationId },
+          select: { productId: true, pickedQuantity: true },
+        });
+        if (shipmentLine) {
+          await prisma.pickingAction.create({
+            data: {
+              organizationId: context.organizationId,
+              taskId,
+              taskLineId: lineId,
+              shipmentId,
+              shipmentLineId: taskLine.referenceLineId,
+              productId: shipmentLine.productId,
+              barcode: "",
+              delta: new Prisma.Decimal(delta),
+              clientEventId: crypto.randomUUID(),
+              deviceId: null,
+              status: "BULK_ACCEPTED",
+              resultingQuantity: shipmentLine.pickedQuantity,
+              scannedAt: new Date(),
+              createdById: context.userId,
+            },
+          });
+        }
       } else if (delta < 0) {
         await this.shipmentService.removePickQuantity(
           context,
@@ -429,6 +454,31 @@ export class TaskDomainService {
           taskLine.referenceLineId,
           Math.abs(delta),
         );
+
+        const shipmentLine = await prisma.shipmentLine.findFirst({
+          where: { id: taskLine.referenceLineId, organizationId: context.organizationId },
+          select: { productId: true, pickedQuantity: true },
+        });
+        if (shipmentLine) {
+          await prisma.pickingAction.create({
+            data: {
+              organizationId: context.organizationId,
+              taskId,
+              taskLineId: lineId,
+              shipmentId,
+              shipmentLineId: taskLine.referenceLineId,
+              productId: shipmentLine.productId,
+              barcode: "",
+              delta: new Prisma.Decimal(delta),
+              clientEventId: crypto.randomUUID(),
+              deviceId: null,
+              status: "UNDONE",
+              resultingQuantity: shipmentLine.pickedQuantity,
+              scannedAt: new Date(),
+              createdById: context.userId,
+            },
+          });
+        }
       }
     }
 

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { AuthSessionService } from "@/infrastructure/auth/auth-session-service";
 import { TenantContextService } from "@/infrastructure/tenancy/tenant-context-service";
 
@@ -22,6 +23,10 @@ export class AuthenticatedRequestContextService {
     };
   }
 }
+
+export const getCachedContext = cache(() =>
+  new AuthenticatedRequestContextService().getCurrentContext(),
+);
 
 export type AuthenticatedRequestContext = Awaited<
   ReturnType<AuthenticatedRequestContextService["getCurrentContext"]>

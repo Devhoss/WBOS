@@ -20,6 +20,7 @@ import { statusColorClass, formatStatus } from "@/components/status-colors";
 import { SalesOrderActions } from "./sales-order-actions";
 import { SalesOrderInvoiceAction } from "./sales-order-invoice-action";
 import { SalesOrderCreatePickTask } from "./sales-order-create-pick-task";
+import { SignedInvoiceUpload } from "./signed-invoice-upload";
 import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
@@ -212,6 +213,7 @@ export default async function SalesOrderDetailPage({
                           <span className="font-medium">
                             {line.productName}
                           </span>
+                          {line.productArabicName ? <span className="ml-2 text-xs text-muted-foreground">{line.productArabicName}</span> : null}
                           <span className="ml-2 font-mono text-xs text-muted-foreground">
                             {line.productSku}
                           </span>
@@ -382,6 +384,12 @@ export default async function SalesOrderDetailPage({
                     archivedAt={order.archivedAt?.toISOString() ?? null}
                   />
                 </div>
+              </section>
+            ) : null}
+
+            {(order.signedInvoicePath || hasDeliveredShipment) ? (
+              <section className="no-print">
+                <SignedInvoiceUpload soId={soId} signedInvoicePath={order.signedInvoicePath} />
               </section>
             ) : null}
 

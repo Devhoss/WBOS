@@ -9,6 +9,7 @@ const columns: ReportColumn[] = [
   { key: "sku", label: "SKU", align: "left", format: "string" },
   { key: "user", label: "User", align: "left", format: "string" },
   { key: "action", label: "Action", align: "left", format: "string" },
+  { key: "quantity", label: "Qty", align: "right", format: "number" },
   { key: "status", label: "Status", align: "left", format: "string" },
 ];
 

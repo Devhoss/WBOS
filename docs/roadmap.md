@@ -141,7 +141,7 @@ Application-level closeout is complete:
 
 # Phase 2 — Master Data
 
-**Status:** In progress
+**Status:** Complete
 
 ## Goal
 
@@ -171,6 +171,10 @@ No inventory movement occurs yet.
 * Warehouses are configurable
 * Master data is searchable
 * Import validation works
+
+## Completion Notes
+
+All master data entities are implemented with full CRUD, search, and validation. Products support barcodes, SKUs, categories, and unit-of-measure configuration. Business Settings manages branding, VAT, and document language preferences used across printed documents.
 
 ---
 
@@ -238,15 +242,17 @@ Receiving products automatically updates inventory.
 
 # Phase 5 — Sales & Payments
 
+**In progress**
+
 ## Goal
 
 Support selling products and receiving payments.
 
 ## Deliverables
 
-* Invoices
-* Invoice lines
-* PDF generation
+* Invoices ✓
+* Invoice lines ✓
+* PDF generation ✓
 * Payments
 * Partial payments
 * Credit notes

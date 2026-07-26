@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { verifyDownloadToken } from "@/lib/download/signed-token";
+
 const publicRoutes = new Set([
   "/sign-in",
   "/sign-up",
@@ -18,7 +20,9 @@ const publicPrefixes = [
   "/sitemap.xml",
 ];
 
-export function middleware(request: NextRequest) {
+const printRoutePattern = /\/print$/;
+
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
@@ -26,6 +30,13 @@ export function middleware(request: NextRequest) {
     publicPrefixes.some((p) => pathname.startsWith(p))
   ) {
     return NextResponse.next();
+  }
+
+  if (printRoutePattern.test(pathname)) {
+    const token = request.nextUrl.searchParams.get("token");
+    if (token && verifyDownloadToken(token)) {
+      return NextResponse.next();
+    }
   }
 
   const sessionCookie =

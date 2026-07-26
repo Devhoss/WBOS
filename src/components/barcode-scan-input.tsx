@@ -117,7 +117,7 @@ export function BarcodeScanInput({
         <ScanBarcode className="ml-2 size-3.5 text-muted-foreground" />
         <input
           ref={inputRef}
-          className="h-8 w-28 rounded-md bg-transparent px-1.5 text-[11px] outline-none"
+          className="h-9 w-36 rounded-md bg-transparent px-2 text-xs outline-none sm:w-44"
           placeholder={placeholder}
           value={input}
           autoFocus={autoFocus}

@@ -125,7 +125,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     lines: invoice.lines.map((l) => ({
       lineNumber: l.lineNumber,
       productName: l.productName,
-      productSku: l.productSku,
+      productArabicName: l.productArabicName ?? null,
+      productBarcode: l.product.barcode ?? null,
+      productSku: l.product.sku,
       unitOfMeasureCode: l.unitOfMeasureCode,
       quantity: Number(l.quantity),
       unitPrice: Number(l.unitPrice),
@@ -291,6 +293,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <dd>{customerBalance.openInvoiceCount}</dd>
                 </div>
               </dl>
+            </section>
+
+            <section className="rounded-lg border p-5">
+              <h2 className="text-sm font-semibold">Proof of Delivery</h2>
+              <div className="mt-3 text-sm">
+                {invoice.salesOrder.signedInvoicePath ? (
+                  <a
+                    href={invoice.salesOrder.signedInvoicePath}
+                    target="_blank"
+                    className="flex items-center gap-2 text-primary hover:underline"
+                  >
+                    <ExternalLink className="size-4" />
+                    View Signed Invoice
+                  </a>
+                ) : (
+                  <p className="text-muted-foreground">No proof uploaded yet.</p>
+                )}
+              </div>
             </section>
 
             <section className="rounded-lg border p-5">

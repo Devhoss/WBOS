@@ -20,6 +20,7 @@ export class CreditNoteRepository {
         unitPrice: number;
         totalPrice: number;
         productName: string;
+        productArabicName: string | null;
         productSku: string;
         unitOfMeasureCode: string;
       }>;
@@ -46,6 +47,7 @@ export class CreditNoteRepository {
             unitPrice: line.unitPrice,
             totalPrice: line.totalPrice,
             productName: line.productName,
+            productArabicName: line.productArabicName,
             productSku: line.productSku,
             unitOfMeasureCode: line.unitOfMeasureCode,
           })),

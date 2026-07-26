@@ -1,7 +1,7 @@
 "use client";
 
-import { Package } from "lucide-react";
-import { useState } from "react";
+import { Package, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
@@ -22,6 +22,7 @@ type ProductRow = {
   sku: string;
   barcode: string | null;
   name: string;
+  arabicName: string | null;
   description: string | null;
   categoryId: string;
   category: string;
@@ -103,6 +104,15 @@ function ProductActions({
     void runAction(() => deleteProduct({ id: product.id }), "Product deleted.");
   }
 
+  useEffect(() => {
+    if (!isEditing) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsEditing(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isEditing]);
+
   const items = [
     { label: "Edit", onClick: () => setIsEditing(true) },
     ...(product.status === "ACTIVE"
@@ -173,6 +183,7 @@ function toFormValue(product: ProductRow): ProductFormValue {
     sku: product.sku,
     barcode: product.barcode,
     name: product.name,
+    arabicName: product.arabicName,
     description: product.description,
     categoryId: product.categoryId,
     supplierId: product.supplierId,
@@ -195,8 +206,21 @@ export function ProductTable({
   units: Option[];
 }) {
   const [feedback, setFeedback] = useState("");
+  const [search, setSearch] = useState("");
 
-  if (products.length === 0) {
+  const filteredProducts = useMemo(() => {
+    if (!search.trim()) return products;
+    const q = search.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.sku.toLowerCase().includes(q) ||
+        (p.barcode ?? "").toLowerCase().includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        (p.arabicName ?? "").toLowerCase().includes(q),
+    );
+  }, [products, search]);
+
+  if (products.length === 0 && !search) {
     return (
       <section className="rounded-lg border px-6 py-12 text-center">
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -228,8 +252,22 @@ export function ProductTable({
           {feedback}
         </div>
       ) : null}
+      <div className="flex items-center gap-3 border-b px-4 py-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:border-primary"
+            placeholder="Search SKU, barcode, name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {filteredProducts.length} of {products.length}
+        </span>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
+        <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-sm">
           <thead className="text-xs font-semibold uppercase text-muted-foreground">
             <tr>
               <th className="sticky top-0 z-10 h-11 border-b border-border bg-background px-4 text-left">
@@ -237,6 +275,9 @@ export function ProductTable({
               </th>
               <th className="sticky top-0 z-10 h-11 border-b border-border bg-background px-4 text-left">
                 Name
+              </th>
+              <th className="sticky top-0 z-10 h-11 border-b border-border bg-background px-4 text-left">
+                Arabic Name
               </th>
               <th className="sticky top-0 z-10 h-11 border-b border-border bg-background px-4 text-left">
                 Category
@@ -259,7 +300,7 @@ export function ProductTable({
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <tr
                 key={product.id}
                 className="h-14 transition odd:bg-muted/20 hover:bg-muted/50"
@@ -269,6 +310,9 @@ export function ProductTable({
                 </td>
                 <td className="border-b border-border px-4 font-medium">
                   {product.name}
+                </td>
+                <td className="border-b border-border px-4 text-muted-foreground">
+                  {product.arabicName ?? "—"}
                 </td>
                 <td className="border-b border-border px-4 text-muted-foreground">
                   {product.category}

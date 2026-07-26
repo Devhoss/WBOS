@@ -37,7 +37,6 @@ export function SignUpForm() {
       }
 
       router.push("/");
-      router.refresh();
     });
   }
 

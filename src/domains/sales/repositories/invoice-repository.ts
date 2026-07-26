@@ -12,6 +12,7 @@ type CreateInvoiceLineInput = {
   unitPrice: Prisma.Decimal;
   totalPrice: Prisma.Decimal;
   productName: string;
+  productArabicName: string | null;
   productSku: string;
   unitOfMeasureCode: string;
   piecesPerBox: Prisma.Decimal | null;
@@ -67,7 +68,7 @@ export class InvoiceRepository {
       include: {
         lines: { orderBy: { lineNumber: "asc" } },
         customer: { select: { id: true, name: true } },
-        salesOrder: { select: { id: true, soNumber: true } },
+        salesOrder: { select: { id: true, soNumber: true, signedInvoicePath: true } },
       },
     });
   }
@@ -81,7 +82,7 @@ export class InvoiceRepository {
           include: { product: true, unitOfMeasure: true },
         },
         customer: true,
-        salesOrder: { select: { id: true, soNumber: true } },
+        salesOrder: { select: { id: true, soNumber: true, signedInvoicePath: true } },
         payments: { orderBy: { paidAt: "desc" } },
         returnOrders: {
           select: {
@@ -145,7 +146,7 @@ export class InvoiceRepository {
         where,
         include: {
           customer: { select: { id: true, name: true } },
-          salesOrder: { select: { id: true, soNumber: true } },
+        salesOrder: { select: { id: true, soNumber: true, signedInvoicePath: true } },
           _count: { select: { lines: true, payments: true } },
         },
         orderBy: { createdAt: "desc" },

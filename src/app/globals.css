@@ -44,10 +44,17 @@ button {
 }
 
 :root {
-  --sidebar-width: 16rem;
+  --sidebar-width: 0rem;
 }
-html[data-sidebar-collapsed="true"] {
-  --sidebar-width: 4rem;
+
+@media (min-width: 1024px) {
+  :root {
+    --sidebar-width: 16rem;
+  }
+
+  html[data-sidebar-collapsed="true"] {
+    --sidebar-width: 4rem;
+  }
 }
 
 /* Sidebar inner content — CSS-driven to prevent hydration FOUC (scoped to .sidebar-panel only) */
@@ -98,5 +105,16 @@ html:not([data-sidebar-ready]) .main-area {
   @page {
     size: A4 portrait;
     margin: 12mm 15mm;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import {
-  AuthenticatedRequestContextService,
+  getCachedContext,
   type AuthenticatedRequestContext,
 } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
@@ -13,7 +13,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   let context: AuthenticatedRequestContext;
 
   try {
-    context = await new AuthenticatedRequestContextService().getCurrentContext();
+    context = await getCachedContext();
   } catch (error) {
     if (error instanceof BusinessError) {
       if (error.code === "ORGANIZATION_REQUIRED") {

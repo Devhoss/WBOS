@@ -8,17 +8,22 @@ type OperationalFilters = {
 };
 
 type ShipmentStatusRow = {
+  shipmentNumber: string;
+  salesOrderNumber: string;
+  customer: string;
   status: string;
-  count: number;
-  totalQuantity: number;
+  warehouse: string;
+  itemsCount: number;
+  createdDate: string;
 };
 
 type DeliveryPerformanceRow = {
-  totalShipments: number;
-  deliveredOnTime: number;
-  deliveredLate: number;
-  failed: number;
+  period: string;
+  totalDeliveries: number;
+  onTime: number;
+  late: number;
   onTimeRate: number;
+  avgDeliveryTime: string;
 };
 
 type PickingPerformanceRow = {
@@ -28,11 +33,13 @@ type PickingPerformanceRow = {
 };
 
 type BarcodeActivityRow = {
-  productId: string;
-  productName: string;
-  productSku: string;
-  scanCount: number;
-  lastScannedAt: string | null;
+  dateTime: string;
+  product: string;
+  sku: string;
+  user: string;
+  action: string;
+  quantity: number;
+  status: string;
 };
 
 type WarehouseActivityRow = {
@@ -55,33 +62,37 @@ export class OperationalReportService extends BaseReportRepository {
         ...(filters.warehouseId && { warehouseId: filters.warehouseId }),
       },
       select: {
+        shipmentNumber: true,
         status: true,
+        createdAt: true,
+        salesOrder: {
+          select: {
+            soNumber: true,
+            customer: { select: { name: true } },
+          },
+        },
+        warehouse: {
+          select: { name: true },
+        },
         lines: {
           select: { quantity: true },
         },
       },
+      orderBy: { createdAt: "desc" },
     });
 
-    const grouped = new Map<string, { count: number; totalQuantity: number }>();
-    for (const shipment of shipments) {
-      const existing = grouped.get(shipment.status);
-      const qty = shipment.lines.reduce((sum, line) => sum + this.toNumber(line.quantity), 0);
-      if (existing) {
-        existing.count += 1;
-        existing.totalQuantity += qty;
-      } else {
-        grouped.set(shipment.status, { count: 1, totalQuantity: qty });
-      }
-    }
-
-    return Array.from(grouped.entries()).map(([status, data]) => ({
-      status,
-      count: data.count,
-      totalQuantity: data.totalQuantity,
+    return shipments.map((s) => ({
+      shipmentNumber: s.shipmentNumber,
+      salesOrderNumber: s.salesOrder?.soNumber ?? "",
+      customer: s.salesOrder?.customer?.name ?? "",
+      status: s.status,
+      warehouse: s.warehouse?.name ?? "",
+      itemsCount: s.lines.reduce((sum, line) => sum + this.toNumber(line.quantity), 0),
+      createdDate: s.createdAt.toISOString(),
     }));
   }
 
-  async deliveryPerformance(filters: OperationalFilters): Promise<DeliveryPerformanceRow> {
+  async deliveryPerformance(filters: OperationalFilters): Promise<DeliveryPerformanceRow[]> {
     const organizationId = await this.resolveOrganizationId();
     const dateFilter = this.buildDateFilter(filters.dateRange);
 
@@ -100,35 +111,46 @@ export class OperationalReportService extends BaseReportRepository {
       },
     });
 
-    let onTime = 0;
-    let late = 0;
-    let failed = 0;
+    type PeriodBucket = {
+      totalDeliveries: number; onTime: number; late: number;
+      deliveryMsSum: number; deliveryCount: number;
+    };
+    const buckets = new Map<string, PeriodBucket>();
 
     for (const s of shipments) {
+      const key = s.createdAt.toISOString().slice(0, 7);
+      const b = buckets.get(key) ?? { totalDeliveries: 0, onTime: 0, late: 0, deliveryMsSum: 0, deliveryCount: 0 };
+      b.totalDeliveries++;
+
       if (s.status === "FAILED") {
-        failed++;
+        buckets.set(key, b);
         continue;
       }
 
       if (s.outForDeliveryAt && s.deliveredAt) {
         const expectedMs = 24 * 60 * 60 * 1000;
         const actualMs = s.deliveredAt.getTime() - s.outForDeliveryAt.getTime();
-        if (actualMs <= expectedMs) onTime++;
-        else late++;
+        if (actualMs <= expectedMs) b.onTime++;
+        else b.late++;
+        b.deliveryMsSum += actualMs;
+        b.deliveryCount++;
       } else {
-        onTime++;
+        b.onTime++;
       }
+
+      buckets.set(key, b);
     }
 
-    const total = onTime + late + failed;
-
-    return {
-      totalShipments: total,
-      deliveredOnTime: onTime,
-      deliveredLate: late,
-      failed,
-      onTimeRate: total > 0 ? Math.round((onTime / total) * 100) : 100,
-    };
+    return Array.from(buckets.entries()).map(([period, b]) => ({
+      period,
+      totalDeliveries: b.totalDeliveries,
+      onTime: b.onTime,
+      late: b.late,
+      onTimeRate: b.totalDeliveries > 0 ? Math.round((b.onTime / b.totalDeliveries) * 100) : 100,
+      avgDeliveryTime: b.deliveryCount > 0
+        ? `${Math.round(b.deliveryMsSum / b.deliveryCount / (1000 * 60))} min`
+        : "-",
+    }));
   }
 
   async pickingPerformance(filters: OperationalFilters): Promise<PickingPerformanceRow> {
@@ -184,47 +206,54 @@ export class OperationalReportService extends BaseReportRepository {
     const organizationId = await this.resolveOrganizationId();
     const dateFilter = this.buildDateFilter(filters.dateRange);
 
-    const lines = await prisma.shipmentLine.findMany({
+    const actions = await prisma.pickingAction.findMany({
       where: {
         organizationId,
-        barcodeVerifiedAt: { not: null },
-        ...(dateFilter.gte || dateFilter.lte ? { barcodeVerifiedAt: { ...dateFilter } } : {}),
-        shipment: {
-          ...(filters.warehouseId && { warehouseId: filters.warehouseId }),
-        },
+        ...(dateFilter.gte || dateFilter.lte ? { scannedAt: { ...dateFilter } } : {}),
       },
       select: {
+        scannedAt: true,
+        createdAt: true,
+        delta: true,
+        status: true,
         productId: true,
-        barcodeVerifiedAt: true,
-        product: { select: { name: true, sku: true } },
+        createdById: true,
       },
+      orderBy: { scannedAt: "desc" },
     });
 
-    const grouped = new Map<string, { productName: string; productSku: string; scanCount: number; lastScannedAt: Date | null }>();
-    for (const line of lines) {
-      const existing = grouped.get(line.productId);
-      if (existing) {
-        existing.scanCount += 1;
-        if (line.barcodeVerifiedAt && (!existing.lastScannedAt || line.barcodeVerifiedAt > existing.lastScannedAt)) {
-          existing.lastScannedAt = line.barcodeVerifiedAt;
-        }
-      } else {
-        grouped.set(line.productId, {
-          productName: line.product.name,
-          productSku: line.product.sku,
-          scanCount: 1,
-          lastScannedAt: line.barcodeVerifiedAt,
-        });
-      }
-    }
+    if (actions.length === 0) return [];
 
-    return Array.from(grouped.entries()).map(([productId, data]) => ({
-      productId,
-      productName: data.productName,
-      productSku: data.productSku,
-      scanCount: data.scanCount,
-      lastScannedAt: data.lastScannedAt?.toISOString() ?? null,
-    }));
+    const productIds = [...new Set(actions.map((a) => a.productId))];
+    const userIds = [...new Set(actions.map((a) => a.createdById))];
+
+    const [products, users] = await Promise.all([
+      prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, name: true, sku: true },
+      }),
+      prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return actions.map((a) => {
+      const product = productMap.get(a.productId);
+      const delta = this.toNumber(a.delta);
+      return {
+        dateTime: (a.scannedAt ?? a.createdAt).toISOString(),
+        product: product?.name ?? "Unknown",
+        sku: product?.sku ?? "",
+        user: userMap.get(a.createdById)?.name ?? "Unknown",
+        action: delta >= 0 ? "Pick" : "Return",
+        quantity: Math.abs(delta),
+        status: a.status,
+      };
+    });
   }
 
   async warehouseActivity(filters: OperationalFilters): Promise<WarehouseActivityRow[]> {

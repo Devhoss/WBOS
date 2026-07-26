@@ -85,7 +85,7 @@ export function ActionMenu({ items }: { items: MenuItem[] }) {
       {items.map((item, i) => (
         <button
           key={i}
-          className={`block w-full rounded px-3 py-2 text-left text-sm whitespace-nowrap transition hover:bg-muted ${item.variant === "destructive" ? "text-destructive" : "text-muted-foreground"}`}
+          className={`block w-full rounded px-3 py-2 text-left text-sm transition hover:bg-muted ${item.variant === "destructive" ? "text-destructive" : "text-muted-foreground"}`}
           type="button"
           onClick={item.onClick}
         >
@@ -99,7 +99,7 @@ export function ActionMenu({ items }: { items: MenuItem[] }) {
     <>
       <button
         ref={buttonRef}
-        className="inline-flex size-8 items-center justify-center rounded-md border bg-background text-muted-foreground transition hover:text-foreground"
+          className="inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground transition hover:text-foreground"
         type="button"
         onClick={toggleMenu}
       >

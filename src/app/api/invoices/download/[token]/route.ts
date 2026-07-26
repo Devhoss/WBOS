@@ -17,19 +17,15 @@ export async function GET(
     }
 
     const invoice = await new InvoiceRepository().findById(payload.organizationId, payload.invoiceId);
+
     if (!invoice) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
 
-    const internalOrigin = process.env.INTERNAL_APP_URL ?? "http://127.0.0.1:3000";
-    const printUrl = `${internalOrigin}/invoices/${payload.invoiceId}/print`;
+    const origin = new URL(req.url).origin;
+    const printUrl = `${origin}/invoices/${payload.invoiceId}/print?token=${token}`;
 
-    const cookies = req.cookies.getAll().map((c) => ({
-      name: c.name,
-      value: c.value,
-    }));
-
-    const pdfBuffer = await generatePdfFromUrl(printUrl, cookies);
+    const pdfBuffer = await generatePdfFromUrl(printUrl);
     const blob = new Blob([pdfBuffer as BlobPart], { type: "application/pdf" });
 
     return new NextResponse(blob, {

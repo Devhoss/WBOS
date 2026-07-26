@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { ReportColumn, ReportFilters } from "@/domains/reports/dto/report-types";
 import type { FilterValues } from "./report-filters";
 import { ReportLayout } from "./report-layout";
@@ -49,6 +49,12 @@ export function ReportPageContent({
       setLoading(false);
     }
   }, [fetcher]);
+
+  useEffect(() => {
+    handleFiltersChange({
+      dateFrom: "", dateTo: "", warehouseId: "", customerId: "", supplierId: "", search: "",
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <ReportLayout

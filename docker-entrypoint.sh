@@ -7,6 +7,7 @@ echo "  WBOS — Storage Validation"
 echo "=========================================="
 
 STORAGE_ROOT="${WBOS_STORAGE_ROOT:-/app/public}"
+BACKUP_ROOT="${WBOS_BACKUP_DIR:-/app/backups}"
 UID_CURRENT=$(id -u)
 GID_CURRENT=$(id -g)
 
@@ -40,7 +41,11 @@ FAIL=0
 
 validate_dir "$STORAGE_ROOT" "Storage root"
 validate_dir "${STORAGE_ROOT}/uploads" "Uploads directory"
-validate_dir "${STORAGE_ROOT}/backups" "Backups directory"
+
+# Backup subdirectories for tiered retention
+for subdir in daily weekly monthly yearly uploads; do
+  validate_dir "${BACKUP_ROOT}/${subdir}" "${subdir} backup directory"
+done
 
 if [ "$FAIL" -ne 0 ]; then
   echo ""

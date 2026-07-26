@@ -35,7 +35,7 @@ export function InvoiceMetadata({ invoice, language, isRtl }: SectionProps) {
           <td className="w-1/2 align-top pl-2">
             <table className="w-full">
               <tbody>
-                <MetadataRow label={t("dueDate", language)} value={invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "-"} rtl={isRtl} />
+                {invoice.dueDate ? <MetadataRow label={t("dueDate", language)} value={new Date(invoice.dueDate).toLocaleDateString()} rtl={isRtl} /> : null}
                 <MetadataRow label={t("paymentTerms", language)} value={invoice.paymentTerms ?? "-"} rtl={isRtl} />
                 <MetadataRow label={t("currency", language)} value={invoice.currency} rtl={isRtl} />
                 <MetadataRow label={t("status", language)} value={invoice.status.replace(/_/g, " ")} rtl={isRtl} />

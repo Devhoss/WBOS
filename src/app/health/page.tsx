@@ -77,14 +77,35 @@ async function getHealth() {
     const bp = path.resolve(backupsDir);
     const exists = existsSync(bp);
     if (exists) {
-      const files = readdirSync(bp).filter((f) => f.endsWith(".sql.gz"));
-      if (files.length > 0) {
-        const latest = files.sort().pop()!;
-        const lStat = statSync(path.join(bp, latest));
-        const ageHours = Math.round((Date.now() - lStat.mtimeMs) / 3600000);
+      const tiers = ["daily", "weekly", "monthly", "yearly", "uploads"];
+      let totalFiles = 0;
+      let latestMtime = 0;
+      const tierCounts: string[] = [];
+      for (const tier of tiers) {
+        const tierPath = path.join(bp, tier);
+        if (existsSync(tierPath)) {
+          const files = readdirSync(tierPath).filter((f) => f.endsWith(".sql.gz") || f.endsWith(".tar.gz"));
+          if (files.length > 0) {
+            totalFiles += files.length;
+            const filesWithMtime = files.map((f) => ({
+              name: f,
+              mtime: statSync(path.join(tierPath, f)).mtimeMs,
+            }));
+            filesWithMtime.sort((a, b) => b.mtime - a.mtime);
+            latestMtime = Math.max(latestMtime, filesWithMtime[0].mtime);
+            tierCounts.push(`${tier}:${files.length}`);
+          } else {
+            tierCounts.push(`${tier}:0`);
+          }
+        } else {
+          tierCounts.push(`${tier}:0`);
+        }
+      }
+      if (totalFiles > 0) {
+        const ageHours = Math.round((Date.now() - latestMtime) / 3600000);
         blocks.push({
           label: "Backups",
-          value: `${files.length} file(s), latest ${ageHours}h ago`,
+          value: `${totalFiles} files across ${tiers.length} tiers, latest ${ageHours}h ago`,
           ok: ageHours < 48,
           icon: <FileText className="size-5" />,
         });

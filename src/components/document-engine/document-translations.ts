@@ -50,6 +50,7 @@ const translations: Record<string, TranslationEntry> = {
   address: { en: "Address", ar: "العنوان" },
   description: { en: "Description", ar: "الوصف" },
   reference: { en: "Reference", ar: "المرجع" },
+  barcode: { en: "BARCODE", ar: "الباركود" },
   piecesPerBox: { en: "PC", ar: "شد" },
   warehouse: { en: "Warehouse", ar: "المستودع" },
   deliveryStatus: { en: "Delivery Status", ar: "حالة التسليم" },

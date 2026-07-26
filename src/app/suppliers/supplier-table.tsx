@@ -1,7 +1,7 @@
 "use client";
 
 import { Package } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
@@ -29,6 +29,15 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingId) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setEditingId(null);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editingId]);
 
   const editingSupplier = [...suppliers, ...archived].find((s) => s.id === editingId) ?? null;
 

@@ -17,6 +17,9 @@ type CurrentStockRow = {
   warehouseId: string;
   warehouseName: string;
   onHand: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+  unitCost: number | null;
 };
 
 type ValuationRow = {
@@ -94,10 +97,12 @@ export class InventoryReportService extends BaseReportRepository {
       _sum: { quantity: true },
     });
 
+    if (entries.length === 0) return [];
+
     const productIds = [...new Set(entries.map((e) => e.productId))];
     const warehouseIds = [...new Set(entries.map((e) => e.warehouseId))];
 
-    const [products, warehouses] = await Promise.all([
+    const [products, warehouses, shipmentLines, latestCosts] = await Promise.all([
       prisma.product.findMany({
         where: { id: { in: productIds } },
         select: { id: true, name: true, sku: true },
@@ -106,11 +111,38 @@ export class InventoryReportService extends BaseReportRepository {
         where: { id: { in: warehouseIds } },
         select: { id: true, name: true },
       }),
+      prisma.shipmentLine.findMany({
+        where: {
+          organizationId,
+          productId: { in: productIds },
+          shipment: {
+            status: { in: ["PENDING_PICK", "PICKING", "PICKED", "LOADED", "OUT_FOR_DELIVERY"] },
+          },
+        },
+        select: {
+          productId: true,
+          quantity: true,
+          pickedQuantity: true,
+          shipmentId: true,
+          shipment: { select: { warehouseId: true } },
+        },
+      }),
+      // Latest purchase cost per product
+      prisma.purchaseOrderLine.findMany({
+        where: {
+          organizationId,
+          productId: { in: productIds },
+          purchaseOrder: { status: { not: "CANCELLED" } },
+        },
+        orderBy: { purchaseOrder: { orderedAt: "desc" } },
+        select: { productId: true, unitCost: true },
+      }),
     ]);
 
     const productMap = new Map(products.map((p) => [p.id, p]));
     const warehouseMap = new Map(warehouses.map((w) => [w.id, w]));
 
+    // Compute on-hand balance per product+warehouse
     const balanceMap = new Map<string, number>();
     for (const entry of entries) {
       const key = `${entry.productId}:${entry.warehouseId}`;
@@ -119,12 +151,32 @@ export class InventoryReportService extends BaseReportRepository {
       balanceMap.set(key, entry.direction === "IN" ? current + qty : current - qty);
     }
 
+    // Compute reserved quantity per product+warehouse from non-delivered shipments
+    const reservedMap = new Map<string, number>();
+    for (const line of shipmentLines) {
+      const whId = line.shipment.warehouseId;
+      const key = `${line.productId}:${whId}`;
+      const reserved = this.toNumber(line.quantity) - this.toNumber(line.pickedQuantity);
+      if (reserved > 0) {
+        reservedMap.set(key, (reservedMap.get(key) ?? 0) + reserved);
+      }
+    }
+
+    // Latest unit cost per product (most recent purchase order)
+    const costMap = new Map<string, number | null>();
+    for (const line of latestCosts) {
+      if (!costMap.has(line.productId)) {
+        costMap.set(line.productId, this.toNumber(line.unitCost));
+      }
+    }
+
     return Array.from(balanceMap.entries())
       .filter(([_, qty]) => qty !== 0)
       .map(([key, onHand]) => {
         const [productId, wid] = key.split(":");
         const product = productMap.get(productId);
         const warehouse = warehouseMap.get(wid);
+        const reservedQuantity = reservedMap.get(key) ?? 0;
         return {
           productId,
           productName: product?.name ?? "Unknown",
@@ -132,6 +184,9 @@ export class InventoryReportService extends BaseReportRepository {
           warehouseId: wid,
           warehouseName: warehouse?.name ?? "Unknown",
           onHand,
+          reservedQuantity,
+          availableQuantity: onHand - reservedQuantity,
+          unitCost: costMap.get(productId) ?? null,
         };
       });
   }

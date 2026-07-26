@@ -3,6 +3,8 @@ import type { BrandingData, LanguageMode } from "@/components/document-engine";
 export type InvoiceLine = {
   lineNumber: number;
   productName: string;
+  productArabicName: string | null;
+  productBarcode: string | null;
   productSku: string;
   unitOfMeasureCode: string;
   quantity: number;

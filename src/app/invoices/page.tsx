@@ -48,7 +48,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             <p className="mt-1 text-xs text-muted-foreground">Invoices are generated from completed sales orders.</p>
           </div>
         ) : (
-          <div className="rounded-lg border">
+          <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/70 text-xs font-semibold uppercase text-muted-foreground">
                 <tr className="border-b">

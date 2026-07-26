@@ -17,6 +17,7 @@ const productDetailsSchema = z.object({
     message: "Barcode may contain letters, numbers, and hyphens only.",
   }),
   name: z.string().trim().min(2, "Product name is required.").max(160),
+  arabicName: optionalText,
   description: optionalText,
   categoryId: z.string().trim().min(1, "Category is required."),
   supplierId: optionalText,

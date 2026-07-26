@@ -5,6 +5,7 @@ import { useDocument } from "@/components/document-engine";
 type CNLine = {
   lineNumber: number;
   productName: string;
+  productArabicName: string | null;
   productSku: string;
   unitOfMeasureCode: string;
   quantity: number;
@@ -65,7 +66,8 @@ export function PrintableCreditNote({ creditNote }: { creditNote: CNData }) {
             <tr key={l.lineNumber} style={{ borderBottom: "1px solid #f3f4f6" }}>
               <td style={{ padding: "6px", color: "#6b7280" }}>{l.lineNumber}</td>
               <td style={{ padding: "6px" }}>
-                {l.productName}
+                {isRtl ? (l.productArabicName ?? l.productName) : l.productName}
+                {l.productArabicName && !isRtl ? <div style={{ fontSize: "10px", color: "#9ca3af" }}>{l.productArabicName}</div> : null}
                 <span style={{ marginLeft: "6px", fontFamily: "monospace", fontSize: "11px", color: "#9ca3af" }}>{l.productSku}</span>
                 <span style={{ marginLeft: "4px", fontSize: "11px", color: "#9ca3af" }}>({l.unitOfMeasureCode})</span>
               </td>

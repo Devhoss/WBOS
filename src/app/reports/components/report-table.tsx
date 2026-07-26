@@ -34,7 +34,7 @@ export function ReportTable({ columns, rows }: Props) {
                 <th
                   key={col.key}
                   className={cn(
-                    "h-10 px-4 text-xs font-semibold uppercase text-muted-foreground",
+                    "h-11 px-4 py-3 text-left align-middle text-xs font-medium uppercase tracking-wide text-muted-foreground",
                     col.align === "right" && "text-right",
                     col.align === "center" && "text-center",
                   )}
@@ -56,13 +56,16 @@ export function ReportTable({ columns, rows }: Props) {
               </tr>
             ) : (
               rows.map((row, i) => (
-                <tr key={i} className="border-b last:border-b-0 hover:bg-muted/30">
+                <tr
+                  key={i}
+                  className="border-b last:border-b-0 hover:bg-muted/30"
+                >
                   {columns.map((col) => (
                     <td
                       key={col.key}
                       className={cn(
-                        "h-12 px-4 text-sm",
-                        col.align === "right" && "text-right font-mono tabular-nums",
+                        "h-11 px-4 py-3 align-middle",
+                        col.align === "right" && "text-right",
                         col.align === "center" && "text-center",
                       )}
                     >
@@ -76,7 +79,9 @@ export function ReportTable({ columns, rows }: Props) {
         </table>
       </div>
       <div className="flex items-center border-t px-4 py-2.5 text-xs text-muted-foreground">
-        <span>{rows.length} row{rows.length !== 1 ? "s" : ""}</span>
+        <span>
+          {rows.length} row{rows.length !== 1 ? "s" : ""}
+        </span>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -32,6 +32,15 @@ export function CustomerTable({ customers, archived }: {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editingId) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setEditingId(null);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [editingId]);
 
   const editingCustomer = [...customers, ...archived].find((c) => c.id === editingId) ?? null;
 

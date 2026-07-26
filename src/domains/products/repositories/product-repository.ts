@@ -43,6 +43,7 @@ export class ProductRepository {
         sku: input.sku,
         barcode: input.barcode ?? null,
         name: input.name,
+        arabicName: input.arabicName ?? null,
         description: input.description ?? null,
         status: input.status,
         defaultSellingPrice:
@@ -87,6 +88,7 @@ export class ProductRepository {
         unitOfMeasureId: input.unitOfMeasureId,
         barcode: input.barcode ?? null,
         name: input.name,
+        arabicName: input.arabicName ?? null,
         description: input.description ?? null,
         status: input.status,
         archivedAt: input.status === "ARCHIVED" ? new Date() : null,

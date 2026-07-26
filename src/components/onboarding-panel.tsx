@@ -45,27 +45,29 @@ export function OnboardingPanel({
 
   return (
     <>
-      <div className="onboarding-expanded rounded-lg border bg-card p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <Building2 className="size-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold">Getting started</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Set up {orgName} to start operating.
-              </p>
+      <div className="onboarding-expanded rounded-lg border bg-card p-4 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 sm:size-12">
+            <Building2 className="size-5 text-primary sm:size-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold sm:text-base">Getting started</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+                  Set up {orgName} to start operating.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSkip}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Dismiss"
+              >
+                <X className="size-4" />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Dismiss"
-          >
-            <X className="size-4" />
-          </button>
         </div>
 
         <div className="mt-5 space-y-2">

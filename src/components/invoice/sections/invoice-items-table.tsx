@@ -4,48 +4,65 @@ import type { SectionProps } from "./types";
 export function InvoiceItemsTable({ invoice, language }: SectionProps) {
   const columns: DocTableColumn[] = [
     {
-      key: "lineNumber",
-      label: t("line", language),
-      width: "5%",
-      align: "center",
-      render: (row) => String(row.lineNumber),
+      key: "productBarcode",
+      label: t("barcode", language),
+      width: "12%",
+      render: (row) => (
+        <span style={{ fontFamily: "'Courier New', monospace", fontSize: "11px", color: "#4b5563", fontVariantNumeric: "tabular-nums" }}>
+          {String(row.productBarcode ?? "—")}
+        </span>
+      ),
     },
     {
       key: "productName",
       label: t("product", language),
-      width: "32%",
+      width: "28%",
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 600, color: "#1f2937" }}>{String(row.productName)}</div>
-          <div style={{ fontSize: "10px", color: "#6b7280" }}>{String(row.productSku)}</div>
+          <div style={{ fontWeight: 600, color: "#1f2937" }}>
+            {language === "arabic" ? (String(row.productArabicName ?? row.productName)) : String(row.productName)}
+          </div>
+          {row.productArabicName && language !== "arabic" ? (
+            <div style={{ fontSize: "10px", color: "#9ca3af" }}>{String(row.productArabicName)}</div>
+          ) : null}
+          <div style={{ fontSize: "10px", color: "#9ca3af" }}>
+            {String(row.productSku)}
+          </div>
         </div>
       ),
     },
     {
-      key: "quantity",
-      label: t("quantity", language),
-      width: "8%",
-      align: "right",
-      render: (row) => `${Number(row.quantity).toFixed(3)} ${String(row.unitOfMeasureCode)}`,
+      key: "unitOfMeasureCode",
+      label: t("unit", language),
+      width: "7%",
+      align: "center",
+      render: (row) => <span style={{ fontSize: "10px", color: "#6b7280" }}>{String(row.unitOfMeasureCode)}</span>,
     },
     {
       key: "piecesPerBox",
       label: t("piecesPerBox", language),
       width: "8%",
+      align: "center",
+      render: (row) => (Number(row.piecesPerBox) > 0 ? Number(row.piecesPerBox).toFixed(0) : "—"),
+    },
+    {
+      key: "quantity",
+      label: t("quantity", language),
+      width: "10%",
       align: "right",
-      render: (row) => (Number(row.piecesPerBox) > 0 ? Number(row.piecesPerBox).toFixed(0) : "-"),
+      render: (row) => `${Number(row.quantity).toFixed(3)}`,
     },
     {
       key: "unitPrice",
       label: t("unitPrice", language),
-      width: "13%",
+      width: "12%",
       align: "right",
       render: (row) => `${Number(row.unitPrice).toFixed(3)}`,
     },
     {
       key: "totalPrice",
-      label: t("netPrice", language),
-      width: "14%",
+      label: t("total", language),
+      width: "13%",
       align: "right",
       render: (row) => `${Number(row.totalPrice).toFixed(3)}`,
     },
