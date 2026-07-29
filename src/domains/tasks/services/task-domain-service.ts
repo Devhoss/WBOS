@@ -114,7 +114,7 @@ export class TaskDomainService {
     const task = await this.tasks.create(context.organizationId, {
       taskNumber: doc.documentNumber,
       type: "PICK_ORDER",
-      status: isScheduled ? "SCHEDULED" : "ASSIGNED",
+      status: isScheduled ? "SCHEDULED" : "READY",
       title: `Pick ${salesOrder?.soNumber ?? ""} — ${customerName}`,
       subtitle: `${lineCount} items, ${shipment.warehouse?.name ?? ""}`,
       referenceType: "SALES_ORDER",
@@ -204,7 +204,7 @@ export class TaskDomainService {
   ): Promise<ComposedTaskDetail> {
     const task = await this.tasks.findById(context.organizationId, taskId);
     if (!task) throw new BusinessError("Task not found.", "TASK_NOT_FOUND");
-    if (task.status !== "ASSIGNED" && task.status !== "SCHEDULED") throw new BusinessError("Task must be in ASSIGNED or SCHEDULED status to start.", "TASK_INVALID_STATUS");
+    if (task.status !== "READY" && task.status !== "SCHEDULED") throw new BusinessError("Task must be in READY or SCHEDULED status to start.", "TASK_INVALID_STATUS");
 
     const now = new Date();
     await this.tasks.updateStatusWithTimestamp(

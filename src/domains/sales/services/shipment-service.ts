@@ -263,30 +263,23 @@ export class ShipmentService {
     const salesOrderId = shipment.salesOrderId;
 
     await prisma.$transaction(async (tx) => {
-      const postingLines = await Promise.all(
-        shipment.lines.map(async (line) => {
-          const product = await tx.product.findFirst({
-            where: { id: line.productId, organizationId: context.organizationId },
-            select: { unitOfMeasureId: true },
-          });
-
-          return {
-            productId: line.productId,
-            unitOfMeasureId: product?.unitOfMeasureId ?? "",
-            quantity: line.quantity,
-            fromWarehouseId: shipment.warehouseId,
-            notes: line.notes,
-            ledgerEntries: [
-              {
-                warehouseId: shipment.warehouseId,
-                movementType: "SALE" as const,
-                direction: "OUT" as const,
-                quantity: line.quantity,
-              },
-            ],
-          };
-        }),
-      );
+      const postingLines = shipment.lines.map((line) => {
+        return {
+          productId: line.productId,
+          unitOfMeasureId: line.unitOfMeasureId,
+          quantity: line.quantity,
+          fromWarehouseId: shipment.warehouseId,
+          notes: line.notes,
+          ledgerEntries: [
+            {
+              warehouseId: shipment.warehouseId,
+              movementType: "SALE" as const,
+              direction: "OUT" as const,
+              quantity: line.quantity,
+            },
+          ],
+        };
+      });
 
       await this.posting.post(
         {

@@ -12,6 +12,7 @@ export type InvoiceLine = {
   discountAmount: number;
   totalPrice: number;
   piecesPerBox: number | null;
+  lineType: "NORMAL" | "FREE_SAMPLE";
 };
 
 export type InvoiceData = {

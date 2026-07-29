@@ -1,10 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
 import { TaskApplicationService } from "@/domains/tasks/services/task-application-service";
+import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 
 const service = new TaskApplicationService();
+const notifications = createNotificationService();
 
 export async function startTaskAction(taskId: string, updatedAt: string) {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
@@ -20,6 +21,11 @@ export async function completeTaskAction(taskId: string, updatedAt: string) {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
   try {
     const task = await service.completeTask(context, taskId, updatedAt);
+    await notifications.notifyTaskCompleted(
+      { organizationId: context.organizationId, userId: context.userId },
+      task.taskNumber,
+      task.id,
+    );
     return { ok: true as const, task };
   } catch (e: any) {
     return { ok: false as const, message: e.message ?? "Failed to complete task." };
@@ -66,6 +72,19 @@ export async function createPickTaskAction(salesOrderId: string, assignedToId?: 
       if (!detail) continue;
       const task = await domain.createFromShipment(context, detail as any, assignedToId);
       tasks.push(task);
+    }
+
+    const notifiedUserIds = new Set<string>();
+    for (const task of tasks) {
+      const assigneeId = task.assignedTo?.id;
+      if (assigneeId && !notifiedUserIds.has(assigneeId)) {
+        notifiedUserIds.add(assigneeId);
+        await notifications.notifyTaskAssigned(
+          { organizationId: context.organizationId, userId: assigneeId },
+          task.taskNumber,
+          task.id,
+        );
+      }
     }
 
     return { ok: true as const, tasks };

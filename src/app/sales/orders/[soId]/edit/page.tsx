@@ -61,6 +61,7 @@ export default async function EditSalesOrderPage({ params }: { params: Promise<{
               unitOfMeasureCode: l.unitOfMeasureCode,
               piecesPerBox: l.piecesPerBox ? String(l.piecesPerBox) : "",
               description: l.description ?? "", notes: l.notes ?? "",
+              freeSample: l.lineType === "FREE_SAMPLE",
             })),
           }}
           products={activeProducts.map((p) => ({

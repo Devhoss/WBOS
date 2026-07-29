@@ -531,7 +531,7 @@ export class ReturnOrderService {
       }),
       prisma.salesOrderLine.findFirst({
         where: { salesOrderId, productId: orderLine.productId },
-        select: { id: true },
+        select: { id: true, unitOfMeasureId: true, unitOfMeasureCode: true },
       }),
     ]);
 
@@ -559,6 +559,8 @@ export class ReturnOrderService {
             quantity: new Prisma.Decimal(orderLine.receivedQuantity),
             productName: product?.name ?? "",
             productSku: product?.sku ?? "",
+            unitOfMeasureId: soLine.unitOfMeasureId,
+            unitOfMeasureCode: soLine.unitOfMeasureCode,
           }],
         },
       },
@@ -581,7 +583,7 @@ export class ReturnOrderService {
         organizationId: context.organizationId,
         taskNumber,
         type: "PICK_ORDER",
-        status: "ASSIGNED",
+        status: "READY",
         priority: "HIGH",
         title: `Pick replacement for return ${returnOrder.returnNumber}`,
         subtitle: `Replacement shipment ${shipmentNumber}`,

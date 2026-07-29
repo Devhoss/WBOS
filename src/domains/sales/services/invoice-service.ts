@@ -100,6 +100,10 @@ export class InvoiceService {
           }
         }
 
+        const isFreeSample = line.lineType === "FREE_SAMPLE";
+        const unitPrice = isFreeSample ? new Prisma.Decimal(0) : new Prisma.Decimal(line.unitPrice);
+        const totalPrice = isFreeSample ? new Prisma.Decimal(0) : new Prisma.Decimal(line.totalPrice);
+
         return {
           organizationId: context.organizationId,
           salesOrderLineId: line.id,
@@ -107,8 +111,9 @@ export class InvoiceService {
           unitOfMeasureId: line.unitOfMeasureId,
           lineNumber: index + 1,
           quantity: new Prisma.Decimal(line.orderedQuantity),
-          unitPrice: new Prisma.Decimal(line.unitPrice),
-          totalPrice: new Prisma.Decimal(line.totalPrice),
+          unitPrice,
+          totalPrice,
+          lineType: line.lineType ?? "NORMAL",
           productName: line.productName,
           productArabicName: line.productArabicName ?? null,
           productSku: line.productSku,

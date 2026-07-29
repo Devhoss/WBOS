@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Trash2, Upload, Eye } from "lucide-react";
+import { Trash2, Upload, Eye, AlertTriangle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
@@ -10,6 +10,7 @@ export function SignedInvoiceUpload({ soId, signedInvoicePath }: { soId: string;
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -28,8 +29,8 @@ export function SignedInvoiceUpload({ soId, signedInvoicePath }: { soId: string;
   }
 
   async function handleRemove() {
-    if (!window.confirm("Remove the signed invoice?")) return;
     setBusy(true);
+    setConfirmRemove(false);
     await removeSignedInvoiceAction(soId);
     setBusy(false);
     router.refresh();
@@ -78,14 +79,34 @@ export function SignedInvoiceUpload({ soId, signedInvoicePath }: { soId: string;
               <Upload className="size-3.5" />
               {busy ? "Uploading..." : "Replace"}
             </button>
-            <button
-              onClick={handleRemove}
-              disabled={busy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 px-3 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
-            >
-              <Trash2 className="size-3.5" />
-              Remove
-            </button>
+            {confirmRemove ? (
+              <div className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 p-2">
+                <AlertTriangle className="size-4 shrink-0 text-red-600" />
+                <span className="text-xs text-red-700">Remove signed Proof of Delivery? This cannot be undone.</span>
+                <button
+                  onClick={handleRemove}
+                  disabled={busy}
+                  className="ml-auto inline-flex h-7 items-center rounded bg-red-600 px-2.5 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+                  {busy ? "Removing..." : "Remove"}
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-red-100"
+                >
+                  <X className="size-3.5 text-red-600" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmRemove(true)}
+                disabled={busy}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 px-3 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+              >
+                <Trash2 className="size-3.5" />
+                Remove
+              </button>
+            )}
           </div>
         </div>
       ) : (

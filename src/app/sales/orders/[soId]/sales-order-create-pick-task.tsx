@@ -12,7 +12,7 @@ export function SalesOrderCreatePickTask({ soId, workers }: { soId: string; work
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
-  const [assignedToId, setAssignedToId] = useState<string>("");
+  const [assignedToId, setAssignedToId] = useState<string>(workers.length === 1 ? workers[0].id : "");
 
   async function create() {
     setFeedback(null);
@@ -43,7 +43,6 @@ export function SalesOrderCreatePickTask({ soId, workers }: { soId: string; work
         onChange={(e) => setAssignedToId(e.target.value)}
         className="flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm shadow-sm"
       >
-        <option value="">Myself</option>
         {workers.map((w) => (
           <option key={w.id} value={w.id}>{w.name}</option>
         ))}

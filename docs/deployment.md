@@ -172,6 +172,12 @@ curl http://localhost:3000/api/health
 | `PORT` | No | `3000` | Host port to bind the application to. |
 | `WBOS_STORAGE_ROOT` | No | `./storage` | Upload storage directory. In Docker, this maps to the `uploads` volume. |
 | `WBOS_BACKUP_DIR` | No | `./backups` | Backup root directory. Contains tiered subdirectories: `daily/`, `weekly/`, `monthly/`, `yearly/`, `uploads/`. |
+| `FIREBASE_ADMIN_PROJECT_ID` | No* | — | Firebase project ID for FCM push notifications. Required for real-time push delivery. |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | No* | — | Firebase service account email for FCM authentication. |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | No* | — | Firebase service account private key. Use `\n` for newlines in `.env`. |
+| `FIREBASE_ADMIN_KEY_PATH` | No | — | Path to Firebase service account JSON file (alternative to individual vars). Store the file in `.secrets/` (gitignored). |
+
+*\*Required for FCM push. If unset, notifications work via in-app polling only.*
 
 ### Database URL Formats
 

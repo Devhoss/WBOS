@@ -18,6 +18,8 @@ export const createShipmentSchema = z.object({
         quantity: z.coerce.number().positive("Quantity must be greater than zero."),
         productName: z.string().trim().min(1, "Product name is required."),
         productSku: z.string().trim().min(1, "Product SKU is required."),
+        unitOfMeasureId: z.string().trim().min(1, "Unit of measure is required."),
+        unitOfMeasureCode: z.string().trim().min(1, "Unit of measure code is required."),
         notes: optionalText,
       }),
     )

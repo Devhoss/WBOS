@@ -292,7 +292,7 @@ Transform operational data into business intelligence.
 * Inventory valuation
 * Aging reports
 * Global search
-* Notifications
+* Notifications ✓ (API, DB, FCM push, mobile)
 
 ## Business Value
 

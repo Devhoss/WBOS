@@ -134,6 +134,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       discountAmount: 0,
       totalPrice: Number(l.totalPrice),
       piecesPerBox: l.piecesPerBox ? Number(l.piecesPerBox) : null,
+      lineType: (l.lineType ?? "NORMAL") as "NORMAL" | "FREE_SAMPLE",
     })),
   };
 

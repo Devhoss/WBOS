@@ -30,7 +30,7 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
         lines: {
           select: {
             id: true, productId: true, orderedQuantity: true, shippedQuantity: true,
-            productName: true, productSku: true, unitOfMeasureCode: true,
+            productName: true, productSku: true, unitOfMeasureId: true, unitOfMeasureCode: true,
           },
         },
       },
@@ -47,11 +47,11 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
       isScheduled: expectedShipDate ? calendar.shouldSchedule(new Date(expectedShipDate)) : false,
       lines: o.lines
       .filter((l) => Number(l.orderedQuantity) > Number(l.shippedQuantity))
-      .map((l) => ({
-        id: l.id, productId: l.productId, productName: l.productName, productSku: l.productSku,
-        orderedQuantity: Number(l.orderedQuantity), shippedQuantity: Number(l.shippedQuantity),
-        unitOfMeasureCode: l.unitOfMeasureCode,
-      })),
+.map((l) => ({
+            id: l.id, productId: l.productId, productName: l.productName, productSku: l.productSku,
+            orderedQuantity: Number(l.orderedQuantity), shippedQuantity: Number(l.shippedQuantity),
+            unitOfMeasureId: l.unitOfMeasureId, unitOfMeasureCode: l.unitOfMeasureCode,
+          })),
     };
   }).filter((o: { lines: unknown[] }) => o.lines.length > 0);
 
@@ -64,7 +64,7 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
         lines: {
           select: {
             id: true, productId: true, orderedQuantity: true, shippedQuantity: true,
-            productName: true, productSku: true, unitOfMeasureCode: true,
+            productName: true, productSku: true, unitOfMeasureId: true, unitOfMeasureCode: true,
           },
         },
       },
@@ -80,7 +80,7 @@ export default async function NewShipmentPage({ searchParams }: { searchParams: 
         .map((l) => ({
           id: l.id, productId: l.productId, productName: l.productName, productSku: l.productSku,
           orderedQuantity: Number(l.orderedQuantity), shippedQuantity: Number(l.shippedQuantity),
-          unitOfMeasureCode: l.unitOfMeasureCode,
+          unitOfMeasureId: l.unitOfMeasureId, unitOfMeasureCode: l.unitOfMeasureCode,
         })),
     });
   }

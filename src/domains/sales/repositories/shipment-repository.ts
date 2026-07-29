@@ -27,6 +27,8 @@ export class ShipmentRepository {
             quantity: new Prisma.Decimal(line.quantity),
             productName: line.productName,
             productSku: line.productSku,
+            unitOfMeasureId: line.unitOfMeasureId,
+            unitOfMeasureCode: line.unitOfMeasureCode,
             notes: line.notes,
           })),
         },

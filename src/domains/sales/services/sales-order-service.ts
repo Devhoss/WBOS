@@ -222,7 +222,7 @@ export class SalesOrderService {
         organizationId: context.organizationId,
         referenceType: "SALES_ORDER",
         referenceId: id,
-        status: { in: ["SCHEDULED", "ASSIGNED", "IN_PROGRESS"] },
+        status: { in: ["SCHEDULED", "READY", "IN_PROGRESS"] },
       },
       select: { id: true, taskNumber: true },
     });

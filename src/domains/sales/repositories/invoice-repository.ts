@@ -11,6 +11,7 @@ type CreateInvoiceLineInput = {
   quantity: Prisma.Decimal;
   unitPrice: Prisma.Decimal;
   totalPrice: Prisma.Decimal;
+  lineType: "NORMAL" | "FREE_SAMPLE";
   productName: string;
   productArabicName: string | null;
   productSku: string;
@@ -63,7 +64,7 @@ export class InvoiceRepository {
         deliveryStatus: data.deliveryStatus,
         notes: data.notes,
         issuedAt: new Date(),
-        lines: { create: data.lines },
+        lines: { create: data.lines as any },
       },
       include: {
         lines: { orderBy: { lineNumber: "asc" } },

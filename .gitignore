@@ -30,3 +30,8 @@ backups/
 # OS
 .DS_Store
 Thumbs.db
+
+# Firebase
+.secrets/
+secrets/
+firebase-admin*.json

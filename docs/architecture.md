@@ -446,8 +446,9 @@ When introduced, it should handle:
 
 * Report generation
 * Scheduled reminders
-* Notification delivery
 * Data synchronization
+
+**Notification delivery is already handled** — notifications are created synchronously during business events and delivered in real-time via FCM push (with 2-minute in-app polling as resilience fallback). See `docs/push-notifications.md`.
 
 Core business workflows should remain synchronous unless there is a demonstrated need.
 
@@ -475,6 +476,7 @@ Future integrations may include:
 * Barcode scanners
 * Accounting software
 * AI services
+* Firebase Cloud Messaging (already integrated — see `docs/push-notifications.md`)
 
 All integrations belong in the Infrastructure Layer.
 

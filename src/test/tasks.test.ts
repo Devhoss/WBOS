@@ -23,7 +23,7 @@ function createMockTask(overrides = {}) {
     organizationId: "org-1",
     taskNumber: "TSK-2026-000001",
     type: "PICK_ORDER",
-    status: "ASSIGNED",
+    status: "READY",
     priority: "NORMAL",
     title: "Pick SO-000001 — Test Customer",
     subtitle: "5 items, Main Warehouse",
@@ -141,8 +141,8 @@ describe("TaskDomainService", () => {
   });
 
   describe("start", () => {
-    it("should transition from ASSIGNED to IN_PROGRESS", async () => {
-      const mockTask = createMockTask({ status: "ASSIGNED" });
+    it("should transition from READY to IN_PROGRESS", async () => {
+      const mockTask = createMockTask({ status: "READY" });
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
       vi.spyOn(TaskRepository.prototype, "updateStatusWithTimestamp").mockResolvedValue(undefined as never);
       vi.spyOn(TaskRepository.prototype, "findMany").mockResolvedValue({ data: [], total: 0 } as any);
@@ -154,7 +154,7 @@ describe("TaskDomainService", () => {
       expect(result!.startedAt).toBeInstanceOf(Date);
     });
 
-    it("should reject start when task is not ASSIGNED", async () => {
+    it("should reject start when task is not READY", async () => {
       const mockTask = createMockTask({ status: "COMPLETED" });
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
 
@@ -187,7 +187,7 @@ describe("TaskDomainService", () => {
     });
 
     it("should reject complete when task is not IN_PROGRESS", async () => {
-      const mockTask = createMockTask({ status: "ASSIGNED" });
+      const mockTask = createMockTask({ status: "READY" });
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
 
       await expect(
@@ -205,8 +205,8 @@ describe("TaskDomainService", () => {
   });
 
   describe("cancel", () => {
-    it("should cancel from ASSIGNED status", async () => {
-      const mockTask = createMockTask({ status: "ASSIGNED" });
+    it("should cancel from READY status", async () => {
+      const mockTask = createMockTask({ status: "READY" });
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
       vi.spyOn(TaskRepository.prototype, "updateStatusWithTimestamp").mockResolvedValue(undefined as never);
       vi.spyOn(TaskRepository.prototype, "findMany").mockResolvedValue({ data: [], total: 0 } as any);
@@ -265,7 +265,7 @@ describe("TaskDomainService", () => {
     });
 
     it("should reject line update when task not IN_PROGRESS", async () => {
-      const mockTask = createMockTask({ status: "ASSIGNED" });
+      const mockTask = createMockTask({ status: "READY" });
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
 
       await expect(
@@ -299,9 +299,9 @@ describe("TaskDomainService", () => {
   describe("state transition enforcement", () => {
     it("should produce no conflicting states", async () => {
       const scenarios = [
-        { from: "ASSIGNED", to: "COMPLETED", shouldThrow: true },
-        { from: "ASSIGNED", to: "CANCELLED", shouldThrow: false },
-        { from: "ASSIGNED", to: "IN_PROGRESS", shouldThrow: false },
+        { from: "READY", to: "COMPLETED", shouldThrow: true },
+        { from: "READY", to: "CANCELLED", shouldThrow: false },
+        { from: "READY", to: "IN_PROGRESS", shouldThrow: false },
         { from: "IN_PROGRESS", to: "COMPLETED", shouldThrow: false },
         { from: "IN_PROGRESS", to: "CANCELLED", shouldThrow: false },
         { from: "IN_PROGRESS", to: "IN_PROGRESS", shouldThrow: false },

@@ -31,13 +31,14 @@ type SOLine = {
   piecesPerBox: string;
   description: string;
   notes: string;
+  freeSample: boolean;
 };
 
 function createLine(): SOLine {
   return {
     id: uid(),
     productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "",
-    productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "",
+    productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "", freeSample: false,
   };
 }
 
@@ -88,6 +89,10 @@ export function SalesOrderForm({
           }
         }
 
+        if ("freeSample" in patch && patch.freeSample) {
+          updated.unitPrice = "0";
+          updated.totalPrice = "0";
+        }
         if ("orderedQuantity" in patch || "unitPrice" in patch) {
           updated.totalPrice = calcTotal(updated.orderedQuantity, updated.unitPrice);
         }
@@ -142,6 +147,7 @@ export function SalesOrderForm({
           productSku: l.productSku,
           unitOfMeasureCode: l.unitOfMeasureCode,
           piecesPerBox: l.piecesPerBox || undefined,
+          lineType: l.freeSample ? "FREE_SAMPLE" as const : undefined,
           description: l.description || undefined,
           notes: l.notes || undefined,
         })),
@@ -277,6 +283,7 @@ export function SalesOrderForm({
               <th className="h-10 px-3 text-left">UOM</th>
               <th className="h-10 w-28 px-3 text-right">Qty</th>
               <th className="h-10 w-20 px-3 text-right">PC/شد</th>
+              <th className="h-10 w-16 px-3 text-center" title="Free Sample">Sample</th>
               <th className="h-10 w-28 px-3 text-right">Unit Price</th>
               <th className="h-10 w-28 px-3 text-right">Total</th>
               <th className="h-10 px-3 text-left">Description</th>
@@ -296,7 +303,10 @@ export function SalesOrderForm({
                 </td>
                 <td className="p-3">
                   <select className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                    value={line.unitOfMeasureId} onChange={(e) => updateLine(line.id, { unitOfMeasureId: e.target.value })}>
+                    value={line.unitOfMeasureId} onChange={(e) => {
+                      const uom = units.find((u) => u.id === e.target.value);
+                      updateLine(line.id, { unitOfMeasureId: e.target.value, unitOfMeasureCode: uom?.code ?? "" });
+                    }}>
                     <option value="">Select UOM</option>
                     {units.map((u) => (<option key={u.id} value={u.id}>{u.code}</option>))}
                   </select>
@@ -310,6 +320,11 @@ export function SalesOrderForm({
                   <input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary"
                     min="0" step="1" type="number" value={line.piecesPerBox}
                     onChange={(e) => updateLine(line.id, { piecesPerBox: e.target.value })} />
+                </td>
+                <td className="p-3 text-center">
+                  <input className="size-5 cursor-pointer accent-primary"
+                    type="checkbox" checked={line.freeSample}
+                    onChange={(e) => updateLine(line.id, { freeSample: e.target.checked })} />
                 </td>
                 <td className="p-3">
                   <input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary"

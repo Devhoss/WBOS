@@ -21,6 +21,27 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
         <div>
           <div style={{ fontWeight: 600, color: "#1f2937" }}>
             {language === "arabic" ? (String(row.productArabicName ?? row.productName)) : String(row.productName)}
+            {(row as any).lineType === "FREE_SAMPLE" ? (
+              <span style={{
+                marginLeft: "6px",
+                fontSize: "8px",
+                fontWeight: 700,
+                color: "#fff",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                background: "#16a34a",
+                borderRadius: "3px",
+                padding: "1px 5px",
+                lineHeight: 1.4,
+                display: "inline-flex",
+                flexDirection: "column",
+                alignItems: "center",
+                verticalAlign: "middle",
+              }}>
+                <span>FREE SAMPLE</span>
+                <span style={{ fontSize: "7px", opacity: 0.9 }}>عينة مجانية</span>
+              </span>
+            ) : null}
           </div>
           {row.productArabicName && language !== "arabic" ? (
             <div style={{ fontSize: "10px", color: "#9ca3af" }}>{String(row.productArabicName)}</div>

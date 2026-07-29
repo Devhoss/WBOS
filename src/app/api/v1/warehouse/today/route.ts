@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const todayStart = calendar.startOfTodayUTC();
     const tomorrowStart = calendar.startOfTomorrowUTC();
 
-    const activeStatuses: TaskStatus[] = ["ASSIGNED", "IN_PROGRESS"];
+    const activeStatuses: TaskStatus[] = ["READY", "IN_PROGRESS"];
 
     const [pickOrderTasks, deliveries, cycleCounts] = await Promise.all([
       prisma.task.findMany({

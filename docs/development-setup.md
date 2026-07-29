@@ -191,6 +191,55 @@ This is a known Windows limitation with Prisma's native query engine binary — 
 
 ---
 
+---
+
+# Push Notifications
+
+Push notifications use Firebase Cloud Messaging (FCM) and require additional setup.
+
+## Prerequisites
+
+1. A Firebase project with Cloud Messaging enabled.
+2. Android app registered in Firebase Console (`com.wbos.mobile`).
+3. `google-services.json` downloaded from Firebase Console.
+
+## Backend Setup
+
+The backend uses Firebase Admin SDK v14. Set these environment variables:
+
+```env
+FIREBASE_ADMIN_PROJECT_ID="your-firebase-project-id"
+FIREBASE_ADMIN_CLIENT_EMAIL="firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com"
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Alternatively, point to a service account JSON file (store in `.secrets/`, which is gitignored):
+
+```env
+FIREBASE_ADMIN_KEY_PATH="./.secrets/firebase-service-account.json"
+```
+
+**FCM is optional in development.** If none of these vars are set, notifications are stored in the database and delivered via in-app polling only.
+
+## Mobile Setup
+
+1. Place `google-services.json` at the project root (`./google-services.json`).
+2. Verify `app.json` references it: `"googleServicesFile": "./google-services.json"`.
+3. The custom Expo config plugin (`plugins/with-firebase-gradle.js`) injects the Google Services Gradle plugin during `expo prebuild`.
+4. Run `npx expo prebuild --clean` to regenerate the Android project.
+
+## Verification
+
+1. Start the backend with Firebase env vars configured.
+2. Build and run the mobile app on a device.
+3. Trigger a notification (e.g., create a pick task).
+4. Verify the device receives the push notification.
+5. Tap the notification to verify deep-link navigation.
+
+See `docs/push-notifications.md` for detailed architecture and troubleshooting.
+
+---
+
 # Architecture Boundaries
 
 Authentication:

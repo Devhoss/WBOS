@@ -514,7 +514,7 @@ Reports should never modify business entities.
 
 ## Purpose
 
-Represents information requiring user attention.
+Represents information requiring user attention, delivered via in-app polling and optionally via FCM push.
 
 Examples:
 
@@ -524,6 +524,12 @@ Examples:
 * Payment Due
 
 Notifications should always be derived from business events.
+
+## DeviceToken
+
+## Purpose
+
+Represents a mobile device registered to receive FCM push notifications. Supports platform tracking (Android/iOS), multiple devices per user, and automatic deactivation on invalid tokens.
 
 ---
 
@@ -567,6 +573,8 @@ Organization
 ├── Business Settings
 ├── Activity Logs
 ├── Attachments
+├── Notifications
+│     └── Device Tokens
 └── Reports
 ```
 

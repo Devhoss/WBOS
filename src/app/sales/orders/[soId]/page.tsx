@@ -88,11 +88,11 @@ export default async function SalesOrderDetailPage({
     order.id,
   );
 
-  const warehouseWorkers = await prisma.organizationMembership.findMany({
+  const warehouseWorkers = (await prisma.organizationMembership.findMany({
     where: { organizationId: context.organizationId, role: { in: ["WAREHOUSE", "MANAGER", "ADMIN", "OWNER"] } },
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { user: { name: "asc" } },
-  });
+  })).filter((m) => m.user.email !== "system@wbos.local");
 
   const archiveableSO = [
     "APPROVED",

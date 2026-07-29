@@ -18,6 +18,7 @@ const salesOrderLineSchema = z.object({
   piecesPerBox: z.coerce.number().min(0).optional(),
   description: optionalText,
   notes: optionalText,
+  lineType: z.enum(["NORMAL", "FREE_SAMPLE"]).default("NORMAL"),
 });
 
 export const createSalesOrderSchema = z.object({

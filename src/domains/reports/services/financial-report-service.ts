@@ -9,8 +9,9 @@ type FinancialFilters = {
 
 type CustomerStatementRow = {
   date: string;
-  documentType: "INVOICE" | "PAYMENT";
+  documentType: "INVOICE" | "PAYMENT" | "CREDIT_NOTE";
   documentNumber: string;
+  document: string;
   description: string | null;
   debit: number;
   credit: number;
@@ -71,7 +72,7 @@ export class FinancialReportService extends BaseReportRepository {
     const organizationId = await this.resolveOrganizationId();
     const dateFilter = this.buildDateFilter(filters.dateRange);
 
-    const [invoices, payments] = await Promise.all([
+    const [invoices, payments, creditNotes] = await Promise.all([
       prisma.invoice.findMany({
         where: {
           organizationId,
@@ -82,7 +83,6 @@ export class FinancialReportService extends BaseReportRepository {
         select: {
           invoiceNumber: true,
           totalAmount: true,
-          amountPaid: true,
           issuedAt: true,
           createdAt: true,
           notes: true,
@@ -103,12 +103,34 @@ export class FinancialReportService extends BaseReportRepository {
         },
         orderBy: { paidAt: "asc" },
       }),
+      prisma.creditNote.findMany({
+        where: {
+          organizationId,
+          customerId,
+          status: "ISSUED",
+          ...(dateFilter.gte || dateFilter.lte ? { issuedAt: { ...dateFilter } } : {}),
+        },
+        select: {
+          creditNoteNumber: true,
+          totalAmount: true,
+          issuedAt: true,
+          createdAt: true,
+          reason: true,
+        },
+        orderBy: { issuedAt: "asc" },
+      }),
     ]);
 
-    const rows: CustomerStatementRow[] = [];
     let runningBalance = 0;
 
-    const events: { date: Date; type: "INVOICE" | "PAYMENT"; docNum: string; desc: string | null; debit: number; credit: number }[] = [];
+    const events: {
+      date: Date;
+      type: "INVOICE" | "PAYMENT" | "CREDIT_NOTE";
+      docNum: string;
+      desc: string | null;
+      debit: number;
+      credit: number;
+    }[] = [];
 
     for (const inv of invoices) {
       const date = inv.issuedAt ?? inv.createdAt;
@@ -133,14 +155,30 @@ export class FinancialReportService extends BaseReportRepository {
       });
     }
 
+    for (const cn of creditNotes) {
+      const date = cn.issuedAt ?? cn.createdAt;
+      events.push({
+        date,
+        type: "CREDIT_NOTE",
+        docNum: cn.creditNoteNumber,
+        desc: cn.reason,
+        debit: 0,
+        credit: this.toNumber(cn.totalAmount),
+      });
+    }
+
     events.sort((a, b) => a.date.getTime() - b.date.getTime());
 
+    const rows: CustomerStatementRow[] = [];
     for (const ev of events) {
       runningBalance += ev.debit - ev.credit;
       rows.push({
         date: ev.date.toISOString(),
         documentType: ev.type,
         documentNumber: ev.docNum,
+        document: ev.type === "INVOICE" ? `Invoice ${ev.docNum}`
+          : ev.type === "PAYMENT" ? `Payment ${ev.docNum}`
+          : `Credit Note ${ev.docNum}`,
         description: ev.desc,
         debit: ev.debit,
         credit: ev.credit,

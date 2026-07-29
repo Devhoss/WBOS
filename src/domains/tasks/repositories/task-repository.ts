@@ -52,17 +52,30 @@ export class TaskRepository {
     if (filters.referenceType) where.referenceType = filters.referenceType as any;
     if (filters.referenceId) where.referenceId = filters.referenceId;
     if (filters.filter === "today") {
-      where.OR = [
-        { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
-        ...(filters.scheduleBoundary
-          ? [{ status: "SCHEDULED" as const, dueAt: { lt: filters.scheduleBoundary } }]
-          : []),
-      ];
+      if (filters.scheduleBoundary) {
+        where.OR = [
+          { status: { in: ["READY", "IN_PROGRESS"] } },
+          { status: "SCHEDULED" as const, dueAt: { lt: filters.scheduleBoundary } },
+        ];
+      } else {
+        where.status = { in: ["READY", "IN_PROGRESS"] };
+      }
     } else if (filters.filter === "scheduled") {
       where.status = "SCHEDULED";
       if (filters.scheduleBoundary) {
         where.dueAt = { gte: filters.scheduleBoundary };
       }
+    }
+
+    if (filters.filter === "today" && filters.scheduleBoundary) {
+      await prisma.task.updateMany({
+        where: {
+          organizationId,
+          status: "SCHEDULED",
+          dueAt: { lt: filters.scheduleBoundary },
+        },
+        data: { status: "READY" },
+      });
     }
 
     const [data, total] = await Promise.all([
@@ -107,7 +120,7 @@ export class TaskRepository {
         organizationId,
         taskNumber: data.taskNumber,
         type: data.type as any,
-        status: (data.status ?? "ASSIGNED") as any,
+        status: (data.status ?? "READY") as any,
         title: data.title,
         subtitle: data.subtitle,
         referenceType: data.referenceType as any,
@@ -218,7 +231,7 @@ export class TaskRepository {
         organizationId,
         referenceType: referenceType as any,
         referenceId,
-        status: { in: ["SCHEDULED", "ASSIGNED", "IN_PROGRESS"] },
+        status: { in: ["SCHEDULED", "READY", "IN_PROGRESS"] },
       },
       data: {
         status: "CANCELLED",
@@ -238,7 +251,7 @@ export class TaskRepository {
         organizationId,
         referenceType: referenceType as any,
         referenceId,
-        status: { in: ["SCHEDULED", "ASSIGNED", "IN_PROGRESS"] },
+        status: { in: ["SCHEDULED", "READY", "IN_PROGRESS"] },
       },
     });
   }

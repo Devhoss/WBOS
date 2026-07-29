@@ -85,7 +85,11 @@ export default async function ShipmentDetailPage({ params }: { params: Promise<{
             {showPicking ? (
               <PickingList
                 lines={shipment.lines.map((l) => ({
-                  ...l,
+                  id: l.id,
+                  productName: l.productName,
+                  productSku: l.productSku,
+                  notes: l.notes,
+                  product: l.product ? { barcode: l.product.barcode } : null,
                   quantity: Number(l.quantity),
                   pickedQuantity: Number(l.pickedQuantity),
                 }))}

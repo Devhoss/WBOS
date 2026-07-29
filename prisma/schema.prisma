@@ -87,6 +87,11 @@ enum ApprovalMode {
   DUAL
 }
 
+enum LineType {
+  NORMAL
+  FREE_SAMPLE
+}
+
 enum PurchaseOrderStatus {
   DRAFT
   PENDING_APPROVAL
@@ -135,7 +140,7 @@ enum TaskType {
 
 enum TaskStatus {
   SCHEDULED
-  ASSIGNED
+  READY
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -229,27 +234,29 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions              Session[]
-  accounts              Account[]
-  memberships           OrganizationMembership[]
-  activityLogs          ActivityLog[]
-  attachments           Attachment[]
-  inventoryTransactions InventoryTransaction[]
-  purchaseOrdersCreated   PurchaseOrder[] @relation("POCreatedBy")
-  purchaseOrdersApproved  PurchaseOrder[] @relation("POApprovedBy")
-  purchaseOrdersArchived  PurchaseOrder[] @relation("POArchivedBy")
-  salesOrdersCreated      SalesOrder[]   @relation("SOCreatedBy")
-  salesOrdersApproved     SalesOrder[]   @relation("SOApprovedBy")
-  salesOrdersArchived     SalesOrder[]   @relation("SOArchivedBy")
-  shipmentsCreated        Shipment[]     @relation("ShipmentCreatedBy")
-  cycleCountsCounted      CycleCount[]   @relation("CycleCountCountedBy")
-  cycleCountsApproved     CycleCount[]   @relation("CycleCountApprovedBy")
-  tasksAssigned           Task[]         @relation("TaskAssignee")
-  tasksCreated            Task[]         @relation("TaskCreator")
-  returnOrdersCreated      ReturnOrder[]  @relation("ReturnCreatedBy")
-  creditNotesCreated       CreditNote[]   @relation("CreditNoteCreatedBy")
-  quotationsCreated        Quotation[]    @relation("QtCreatedBy")
-  quotationsCancelled      Quotation[]    @relation("QtCancelledBy")
+  sessions               Session[]
+  accounts               Account[]
+  memberships            OrganizationMembership[]
+  activityLogs           ActivityLog[]
+  attachments            Attachment[]
+  inventoryTransactions  InventoryTransaction[]
+  purchaseOrdersCreated  PurchaseOrder[]          @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]          @relation("POApprovedBy")
+  purchaseOrdersArchived PurchaseOrder[]          @relation("POArchivedBy")
+  salesOrdersCreated     SalesOrder[]             @relation("SOCreatedBy")
+  salesOrdersApproved    SalesOrder[]             @relation("SOApprovedBy")
+  salesOrdersArchived    SalesOrder[]             @relation("SOArchivedBy")
+  shipmentsCreated       Shipment[]               @relation("ShipmentCreatedBy")
+  cycleCountsCounted     CycleCount[]             @relation("CycleCountCountedBy")
+  cycleCountsApproved    CycleCount[]             @relation("CycleCountApprovedBy")
+  tasksAssigned          Task[]                   @relation("TaskAssignee")
+  tasksCreated           Task[]                   @relation("TaskCreator")
+  returnOrdersCreated    ReturnOrder[]            @relation("ReturnCreatedBy")
+  creditNotesCreated     CreditNote[]             @relation("CreditNoteCreatedBy")
+  quotationsCreated      Quotation[]              @relation("QtCreatedBy")
+  quotationsCancelled    Quotation[]              @relation("QtCancelledBy")
+  notifications          Notification[]
+  deviceTokens           DeviceToken[]
 
   @@map("user")
 }
@@ -342,8 +349,10 @@ model Organization {
   returnOrderLines          ReturnOrderLine[]
   creditNotes               CreditNote[]
   creditNoteLines           CreditNoteLine[]
-  quotations                Quotation[]
   quotationLines            QuotationLine[]
+
+  notifications Notification[]
+  quotations    Quotation[]
 
   @@map("organizations")
 }
@@ -415,6 +424,7 @@ model UnitOfMeasure {
   returnOrderLines          ReturnOrderLine[]
   creditNoteLines           CreditNoteLine[]
   quotationLines            QuotationLine[]
+  shipmentLines             ShipmentLine[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -438,7 +448,7 @@ model Customer {
   updatedAt      DateTime  @updatedAt
   archivedAt     DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salesOrders  SalesOrder[]
   invoices     Invoice[]
   payments     Payment[]
@@ -468,8 +478,8 @@ model Supplier {
   updatedAt      DateTime  @updatedAt
   archivedAt     DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  products     Product[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products       Product[]
   purchaseOrders PurchaseOrder[]
 
   @@unique([organizationId, name])
@@ -545,32 +555,32 @@ model AdjustmentReason {
 }
 
 model PurchaseOrder {
-  id                  String               @id @default(cuid())
-  organizationId      String
-  poNumber            String
-  supplierId          String
-  status              PurchaseOrderStatus  @default(DRAFT)
-  currency            CurrencyCode         @default(KWD)
-  subtotal            Decimal              @db.Decimal(18, 3)
-  taxAmount           Decimal              @db.Decimal(18, 3) @default(0)
-  totalAmount         Decimal              @db.Decimal(18, 3)
+  id                   String              @id @default(cuid())
+  organizationId       String
+  poNumber             String
+  supplierId           String
+  status               PurchaseOrderStatus @default(DRAFT)
+  currency             CurrencyCode        @default(KWD)
+  subtotal             Decimal             @db.Decimal(18, 3)
+  taxAmount            Decimal             @default(0) @db.Decimal(18, 3)
+  totalAmount          Decimal             @db.Decimal(18, 3)
   expectedDeliveryDate DateTime?
-  deliveryAddress     String?
-  notes               String?
-  internalNotes       String?
-  createdById         String
-  approvedById        String?
-  archivedById        String?
-  orderedAt           DateTime             @default(now())
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  archivedAt          DateTime?
+  deliveryAddress      String?
+  notes                String?
+  internalNotes        String?
+  createdById          String
+  approvedById         String?
+  archivedById         String?
+  orderedAt            DateTime            @default(now())
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  archivedAt           DateTime?
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier     Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  createdBy    User                 @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy   User?                @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  archivedBy   User?                @relation("POArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy    User                @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?               @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  archivedBy   User?               @relation("POArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   lines        PurchaseOrderLine[]
 
   @@unique([organizationId, poNumber])
@@ -580,23 +590,23 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderLine {
-  id                String   @id @default(cuid())
-  organizationId    String
-  purchaseOrderId   String
-  productId         String
-  unitOfMeasureId   String
-  lineNumber        Int
-  description       String?
-  orderedQuantity   Decimal  @db.Decimal(18, 6)
-  receivedQuantity  Decimal  @db.Decimal(18, 6) @default(0)
-  unitCost          Decimal  @db.Decimal(18, 3)
-  totalCost         Decimal  @db.Decimal(18, 3)
-  notes             String?
+  id               String  @id @default(cuid())
+  organizationId   String
+  purchaseOrderId  String
+  productId        String
+  unitOfMeasureId  String
+  lineNumber       Int
+  description      String?
+  orderedQuantity  Decimal @db.Decimal(18, 6)
+  receivedQuantity Decimal @default(0) @db.Decimal(18, 6)
+  unitCost         Decimal @db.Decimal(18, 3)
+  totalCost        Decimal @db.Decimal(18, 3)
+  notes            String?
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  purchaseOrder PurchaseOrder     @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product       Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  unitOfMeasure UnitOfMeasure     @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, purchaseOrderId])
   @@index([organizationId, productId])
@@ -606,38 +616,38 @@ model PurchaseOrderLine {
 }
 
 model SalesOrder {
-  id                  String            @id @default(cuid())
-  organizationId      String
-  soNumber            String
-  customerId          String
-  status              SalesOrderStatus  @default(DRAFT)
-  currency            CurrencyCode      @default(KWD)
-  subtotal            Decimal           @db.Decimal(18, 3)
-  taxAmount           Decimal           @db.Decimal(18, 3) @default(0)
-  totalAmount         Decimal           @db.Decimal(18, 3)
-  discountAmount      Decimal           @db.Decimal(18, 3) @default(0)
-  discountType        DiscountType?
-  discountRate        Decimal?          @db.Decimal(18, 3)
-  orderedAt           DateTime          @default(now())
-  expectedShipDate    DateTime?
-  deliveryAddress     String?
-  notes               String?
-  internalNotes       String?
-  customerReference   String?
-  signedInvoicePath   String?
-  createdById         String
-  approvedById        String?
-  archivedById        String?
-  approvedAt          DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  archivedAt          DateTime?
+  id                String           @id @default(cuid())
+  organizationId    String
+  soNumber          String
+  customerId        String
+  status            SalesOrderStatus @default(DRAFT)
+  currency          CurrencyCode     @default(KWD)
+  subtotal          Decimal          @db.Decimal(18, 3)
+  taxAmount         Decimal          @default(0) @db.Decimal(18, 3)
+  totalAmount       Decimal          @db.Decimal(18, 3)
+  discountAmount    Decimal          @default(0) @db.Decimal(18, 3)
+  discountType      DiscountType?
+  discountRate      Decimal?         @db.Decimal(18, 3)
+  orderedAt         DateTime         @default(now())
+  expectedShipDate  DateTime?
+  deliveryAddress   String?
+  notes             String?
+  internalNotes     String?
+  customerReference String?
+  signedInvoicePath String?
+  createdById       String
+  approvedById      String?
+  archivedById      String?
+  approvedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  archivedAt        DateTime?
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy    User               @relation("SOCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy   User?              @relation("SOApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  archivedBy   User?              @relation("SOArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User             @relation("SOCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?            @relation("SOApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  archivedBy   User?            @relation("SOArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   lines        SalesOrderLine[]
   shipments    Shipment[]
   invoices     Invoice[]
@@ -657,24 +667,25 @@ model SalesOrderLine {
   unitOfMeasureId   String
   lineNumber        Int
   orderedQuantity   Decimal  @db.Decimal(18, 6)
-  shippedQuantity   Decimal  @db.Decimal(18, 6) @default(0)
-  returnedQuantity  Decimal  @db.Decimal(18, 6) @default(0)
+  shippedQuantity   Decimal  @default(0) @db.Decimal(18, 6)
+  returnedQuantity  Decimal  @default(0) @db.Decimal(18, 6)
   unitPrice         Decimal  @db.Decimal(18, 3)
   totalPrice        Decimal  @db.Decimal(18, 3)
   productName       String
   productArabicName String?
   productSku        String
   unitOfMeasureCode String
-  piecesPerBox      Decimal?  @db.Decimal(18, 0)
+  piecesPerBox      Decimal? @db.Decimal(18, 0)
   description       String?
   notes             String?
+  lineType          LineType @default(NORMAL)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  salesOrder   SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
-  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesOrder    SalesOrder     @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure UnitOfMeasure  @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
   shipmentLines ShipmentLine[]
-  invoiceLines              InvoiceLine[]
+  invoiceLines  InvoiceLine[]
 
   @@index([organizationId, salesOrderId])
   @@index([organizationId, productId])
@@ -682,32 +693,32 @@ model SalesOrderLine {
 }
 
 model Quotation {
-  id              String           @id @default(cuid())
-  organizationId  String
-  qtNumber        String
-  customerId      String
-  status          QuotationStatus  @default(DRAFT)
-  currency        CurrencyCode     @default(KWD)
-  subtotal        Decimal          @db.Decimal(18, 3)
-  taxAmount       Decimal          @db.Decimal(18, 3) @default(0)
-  totalAmount     Decimal          @db.Decimal(18, 3)
-  discountAmount  Decimal          @db.Decimal(18, 3) @default(0)
-  discountType    DiscountType?
-  discountRate    Decimal?         @db.Decimal(18, 3)
-  issueDate       DateTime         @default(now())
-  validUntil      DateTime?
-  notes           String?
-  terms           String?
-  createdById     String
-  cancelledById   String?
-  cancelledAt     DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id             String          @id @default(cuid())
+  organizationId String
+  qtNumber       String
+  customerId     String
+  status         QuotationStatus @default(DRAFT)
+  currency       CurrencyCode    @default(KWD)
+  subtotal       Decimal         @db.Decimal(18, 3)
+  taxAmount      Decimal         @default(0) @db.Decimal(18, 3)
+  totalAmount    Decimal         @db.Decimal(18, 3)
+  discountAmount Decimal         @default(0) @db.Decimal(18, 3)
+  discountType   DiscountType?
+  discountRate   Decimal?        @db.Decimal(18, 3)
+  issueDate      DateTime        @default(now())
+  validUntil     DateTime?
+  notes          String?
+  terms          String?
+  createdById    String
+  cancelledById  String?
+  cancelledAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy    User          @relation("QtCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy  User?         @relation("QtCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User            @relation("QtCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy  User?           @relation("QtCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   lines        QuotationLine[]
 
   @@unique([organizationId, qtNumber])
@@ -717,27 +728,27 @@ model Quotation {
 }
 
 model QuotationLine {
-  id                String    @id @default(cuid())
+  id                String   @id @default(cuid())
   organizationId    String
   quotationId       String
   productId         String
   unitOfMeasureId   String
   lineNumber        Int
-  quantity          Decimal   @db.Decimal(18, 6)
-  unitPrice         Decimal   @db.Decimal(18, 3)
-  totalPrice        Decimal   @db.Decimal(18, 3)
+  quantity          Decimal  @db.Decimal(18, 6)
+  unitPrice         Decimal  @db.Decimal(18, 3)
+  totalPrice        Decimal  @db.Decimal(18, 3)
   productName       String
   productArabicName String?
   productSku        String
   unitOfMeasureCode String
-  piecesPerBox      Decimal?  @db.Decimal(18, 0)
+  piecesPerBox      Decimal? @db.Decimal(18, 0)
   productBarcode    String?
   description       String?
   notes             String?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  quotation    Quotation    @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quotation     Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, quotationId])
@@ -746,28 +757,28 @@ model QuotationLine {
 }
 
 model Shipment {
-  id                String         @id @default(cuid())
-  organizationId    String
-  shipmentNumber    String
-  salesOrderId      String
-  warehouseId       String
-  status            ShipmentStatus @default(PENDING_PICK)
-  notes             String?
-  warehouseNotes    String?
-  createdById       String
-  pickedAt          DateTime?
-  loadedAt          DateTime?
-  outForDeliveryAt  DateTime?
-  deliveredAt       DateTime?
-  failedAt          DateTime?
-  failureReason     String?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  organizationId   String
+  shipmentNumber   String
+  salesOrderId     String
+  warehouseId      String
+  status           ShipmentStatus @default(PENDING_PICK)
+  notes            String?
+  warehouseNotes   String?
+  createdById      String
+  pickedAt         DateTime?
+  loadedAt         DateTime?
+  outForDeliveryAt DateTime?
+  deliveredAt      DateTime?
+  failedAt         DateTime?
+  failureReason    String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  salesOrder   SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
-  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  createdBy    User         @relation("ShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesOrder   SalesOrder     @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy    User           @relation("ShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        ShipmentLine[]
 
   @@unique([organizationId, shipmentNumber])
@@ -778,25 +789,29 @@ model Shipment {
 }
 
 model ShipmentLine {
-  id                  String   @id @default(cuid())
-  organizationId      String
-  shipmentId          String
-  salesOrderLineId    String
-  productId           String
-  quantity            Decimal  @db.Decimal(18, 6)
-  pickedQuantity      Decimal  @db.Decimal(18, 6) @default(0)
-  productName         String
-  productSku          String
-  barcodeVerifiedAt   DateTime?
-  notes               String?
+  id                String    @id @default(cuid())
+  organizationId    String
+  shipmentId        String
+  salesOrderLineId  String
+  productId         String
+  unitOfMeasureId   String
+  unitOfMeasureCode String
+  quantity          Decimal   @db.Decimal(18, 6)
+  pickedQuantity    Decimal   @default(0) @db.Decimal(18, 6)
+  productName       String
+  productSku        String
+  barcodeVerifiedAt DateTime?
+  notes             String?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  shipment     Shipment     @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shipment       Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId], references: [id], onDelete: Restrict)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure  UnitOfMeasure  @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, shipmentId])
   @@index([organizationId, productId])
+  @@index([organizationId, unitOfMeasureId])
   @@map("shipment_lines")
 }
 
@@ -805,7 +820,7 @@ model Task {
   organizationId  String
   taskNumber      String
   type            TaskType
-  status          TaskStatus        @default(ASSIGNED)
+  status          TaskStatus        @default(READY)
   priority        TaskPriority      @default(NORMAL)
   title           String
   subtitle        String?
@@ -856,7 +871,7 @@ model TaskLine {
 }
 
 model PickingAction {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   organizationId    String
   taskId            String
   taskLineId        String
@@ -864,14 +879,14 @@ model PickingAction {
   shipmentLineId    String
   productId         String
   barcode           String
-  delta             Decimal  @db.Decimal(18, 6)
+  delta             Decimal   @db.Decimal(18, 6)
   clientEventId     String
   deviceId          String?
   status            String
-  resultingQuantity Decimal  @db.Decimal(18, 6)
+  resultingQuantity Decimal   @db.Decimal(18, 6)
   scannedAt         DateTime?
   createdById       String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   @@unique([organizationId, clientEventId])
   @@index([organizationId, taskId, taskLineId])
@@ -880,37 +895,37 @@ model PickingAction {
 }
 
 model Invoice {
-  id                  String        @id @default(cuid())
-  organizationId      String
-  invoiceNumber       String
-  salesOrderId        String
-  customerId          String
-  status              InvoiceStatus @default(DRAFT)
-  currency            CurrencyCode  @default(KWD)
-  subtotal            Decimal       @db.Decimal(18, 3)
-  taxAmount           Decimal       @db.Decimal(18, 3) @default(0)
-  totalAmount         Decimal       @db.Decimal(18, 3)
-  discountAmount      Decimal       @db.Decimal(18, 3) @default(0)
-  discountType        DiscountType?
-  discountRate        Decimal?      @db.Decimal(18, 3)
-  amountPaid          Decimal       @db.Decimal(18, 3) @default(0)
-  creditedAmount      Decimal       @db.Decimal(18, 3) @default(0)
-  issuedAt            DateTime?
-  dueDate             DateTime?
-  paidAt              DateTime?
-  customerName        String
-  customerAddress     String?
-  paymentTerms        String?
-  notes               String?
-  warehouseName       String?
-  deliveryStatus      String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  archivedAt          DateTime?
+  id              String        @id @default(cuid())
+  organizationId  String
+  invoiceNumber   String
+  salesOrderId    String
+  customerId      String
+  status          InvoiceStatus @default(DRAFT)
+  currency        CurrencyCode  @default(KWD)
+  subtotal        Decimal       @db.Decimal(18, 3)
+  taxAmount       Decimal       @default(0) @db.Decimal(18, 3)
+  totalAmount     Decimal       @db.Decimal(18, 3)
+  discountAmount  Decimal       @default(0) @db.Decimal(18, 3)
+  discountType    DiscountType?
+  discountRate    Decimal?      @db.Decimal(18, 3)
+  amountPaid      Decimal       @default(0) @db.Decimal(18, 3)
+  creditedAmount  Decimal       @default(0) @db.Decimal(18, 3)
+  issuedAt        DateTime?
+  dueDate         DateTime?
+  paidAt          DateTime?
+  customerName    String
+  customerAddress String?
+  paymentTerms    String?
+  notes           String?
+  warehouseName   String?
+  deliveryStatus  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  archivedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  salesOrder   SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
-  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesOrder   SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
   lines        InvoiceLine[]
   payments     Payment[]
   returnOrders ReturnOrder[]
@@ -938,14 +953,15 @@ model InvoiceLine {
   productArabicName String?
   productSku        String
   unitOfMeasureCode String
-  piecesPerBox      Decimal?  @db.Decimal(18, 0)
+  piecesPerBox      Decimal? @db.Decimal(18, 0)
   description       String?
+  lineType          LineType @default(NORMAL)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId], references: [id], onDelete: Restrict)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
-  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice         Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  salesOrderLine  SalesOrderLine   @relation(fields: [salesOrderLineId], references: [id], onDelete: Restrict)
+  product         Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitOfMeasure   UnitOfMeasure    @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
   creditNoteLines CreditNoteLine[]
 
   @@index([organizationId, invoiceId])
@@ -954,19 +970,19 @@ model InvoiceLine {
 }
 
 model Payment {
-  id              String        @id @default(cuid())
-  organizationId  String
-  paymentNumber   String
-  invoiceId       String
-  customerId      String
-  amount          Decimal       @db.Decimal(18, 3)
-  currency        CurrencyCode  @default(KWD)
-  method          PaymentMethod
-  reference       String?
-  paidAt          DateTime      @default(now())
-  notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String
+  paymentNumber  String
+  invoiceId      String
+  customerId     String
+  amount         Decimal       @db.Decimal(18, 3)
+  currency       CurrencyCode  @default(KWD)
+  method         PaymentMethod
+  reference      String?
+  paidAt         DateTime      @default(now())
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -1078,26 +1094,26 @@ model OrganizationMembership {
 }
 
 model BusinessSettings {
-  id                         String       @id @default(cuid())
-  organizationId             String       @unique
-  businessName               String
-  arabicBusinessName         String?
-  address                    String?
-  phone                      String?
-  email                      String?
-  website                    String?
-  vatNumber                  String?
-  commercialRegistration     String?
-  logoPath                   String?
-  footer                     String?
-  termsAndConditions         String?
-  defaultCurrency            CurrencyCode @default(KWD)
-  timezone                   String       @default("Asia/Kuwait")
-  invoicePrefix              String       @default("INV")
-  approvalMode               ApprovalMode @default(SELF)
-  documentLanguage           String       @default("bilingual")
-  createdAt                  DateTime     @default(now())
-  updatedAt                  DateTime     @updatedAt
+  id                     String       @id @default(cuid())
+  organizationId         String       @unique
+  businessName           String
+  arabicBusinessName     String?
+  address                String?
+  phone                  String?
+  email                  String?
+  website                String?
+  vatNumber              String?
+  commercialRegistration String?
+  logoPath               String?
+  footer                 String?
+  termsAndConditions     String?
+  defaultCurrency        CurrencyCode @default(KWD)
+  timezone               String       @default("Asia/Kuwait")
+  invoicePrefix          String       @default("INV")
+  approvalMode           ApprovalMode @default(SELF)
+  documentLanguage       String       @default("bilingual")
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1145,23 +1161,23 @@ model Attachment {
 }
 
 model CycleCount {
-  id              String            @id @default(cuid())
-  organizationId  String
-  countNumber     String
-  warehouseId     String
-  status          CycleCountStatus  @default(DRAFT)
-  notes           String?
-  countedById     String?
-  approvedById    String?
-  countedAt       DateTime?
-  approvedAt      DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id             String           @id @default(cuid())
+  organizationId String
+  countNumber    String
+  warehouseId    String
+  status         CycleCountStatus @default(DRAFT)
+  notes          String?
+  countedById    String?
+  approvedById   String?
+  countedAt      DateTime?
+  approvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  warehouse    Warehouse          @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  countedBy    User?              @relation("CycleCountCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
-  approvedBy   User?              @relation("CycleCountApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouse    Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  countedBy    User?            @relation("CycleCountCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
+  approvedBy   User?            @relation("CycleCountApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   lines        CycleCountLine[]
 
   @@unique([organizationId, countNumber])
@@ -1171,20 +1187,20 @@ model CycleCount {
 }
 
 model CycleCountLine {
-  id              String   @id @default(cuid())
-  cycleCountId    String
-  organizationId  String
-  productId       String
-  expectedQty     Decimal  @db.Decimal(18, 6)
-  countedQty      Decimal? @db.Decimal(18, 6)
-  variance        Decimal? @db.Decimal(18, 6)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  cycleCountId   String
+  organizationId String
+  productId      String
+  expectedQty    Decimal  @db.Decimal(18, 6)
+  countedQty     Decimal? @db.Decimal(18, 6)
+  variance       Decimal? @db.Decimal(18, 6)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  cycleCount CycleCount @relation(fields: [cycleCountId], references: [id], onDelete: Cascade)
+  cycleCount   CycleCount   @relation(fields: [cycleCountId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product     Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([cycleCountId])
   @@index([organizationId, productId])
@@ -1210,27 +1226,27 @@ model DocumentSequence {
 }
 
 model ReturnOrder {
-  id              String        @id @default(cuid())
+  id              String       @id @default(cuid())
   organizationId  String
   returnNumber    String
   salesOrderId    String?
   invoiceId       String?
   customerId      String
-  status          ReturnStatus  @default(OPEN)
+  status          ReturnStatus @default(OPEN)
   reason          ReturnReason
   notes           String?
   createdById     String
   completedAt     DateTime?
   cancelledAt     DateTime?
   cancelledReason String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  salesOrder   SalesOrder?  @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
-  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
-  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy    User         @relation("ReturnCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesOrder   SalesOrder?       @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  invoice      Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User              @relation("ReturnCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        ReturnOrderLine[]
   creditNote   CreditNote?
 
@@ -1243,23 +1259,23 @@ model ReturnOrder {
 }
 
 model ReturnOrderLine {
-  id                String            @id @default(cuid())
-  organizationId    String
-  returnOrderId     String
-  productId         String
-  unitOfMeasureId   String
-  invoiceLineId     String?
-  lineNumber        Int
-  expectedQuantity  Decimal           @db.Decimal(18, 6)
-  receivedQuantity  Decimal           @db.Decimal(18, 6) @default(0)
-  disposition       ReturnDisposition?
-  condition         ReturnCondition?
-  notes             String?
-  unitPrice         Decimal           @db.Decimal(18, 3)
+  id               String             @id @default(cuid())
+  organizationId   String
+  returnOrderId    String
+  productId        String
+  unitOfMeasureId  String
+  invoiceLineId    String?
+  lineNumber       Int
+  expectedQuantity Decimal            @db.Decimal(18, 6)
+  receivedQuantity Decimal            @default(0) @db.Decimal(18, 6)
+  disposition      ReturnDisposition?
+  condition        ReturnCondition?
+  notes            String?
+  unitPrice        Decimal            @db.Decimal(18, 3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  returnOrder  ReturnOrder  @relation(fields: [returnOrderId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  returnOrder   ReturnOrder   @relation(fields: [returnOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
   @@index([returnOrderId])
@@ -1268,28 +1284,28 @@ model ReturnOrderLine {
 }
 
 model CreditNote {
-  id                String           @id @default(cuid())
-  organizationId    String
-  creditNoteNumber  String
-  invoiceId         String
-  returnOrderId     String?   @unique
-  customerId        String
-  status            CreditNoteStatus @default(DRAFT)
-  currency          CurrencyCode     @default(KWD)
-  totalAmount       Decimal          @db.Decimal(18, 3)
-  reason            String?
-  createdById       String
-  issuedAt          DateTime?
-  cancelledAt       DateTime?
-  cancelledReason   String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  organizationId   String
+  creditNoteNumber String
+  invoiceId        String
+  returnOrderId    String?          @unique
+  customerId       String
+  status           CreditNoteStatus @default(DRAFT)
+  currency         CurrencyCode     @default(KWD)
+  totalAmount      Decimal          @db.Decimal(18, 3)
+  reason           String?
+  createdById      String
+  issuedAt         DateTime?
+  cancelledAt      DateTime?
+  cancelledReason  String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  returnOrder  ReturnOrder? @relation(fields: [returnOrderId], references: [id], onDelete: SetNull)
-  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy    User         @relation("CreditNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  returnOrder  ReturnOrder?     @relation(fields: [returnOrderId], references: [id], onDelete: SetNull)
+  customer     Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User             @relation("CreditNoteCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   lines        CreditNoteLine[]
 
   @@unique([organizationId, creditNoteNumber])
@@ -1300,28 +1316,72 @@ model CreditNote {
 }
 
 model CreditNoteLine {
-  id              String   @id @default(cuid())
-  organizationId  String
-  creditNoteId    String
-  invoiceLineId   String
-  productId       String
-  unitOfMeasureId String
-  lineNumber      Int
-  quantity        Decimal  @db.Decimal(18, 6)
-  unitPrice       Decimal  @db.Decimal(18, 3)
-  totalPrice      Decimal  @db.Decimal(18, 3)
+  id                String  @id @default(cuid())
+  organizationId    String
+  creditNoteId      String
+  invoiceLineId     String
+  productId         String
+  unitOfMeasureId   String
+  lineNumber        Int
+  quantity          Decimal @db.Decimal(18, 6)
+  unitPrice         Decimal @db.Decimal(18, 3)
+  totalPrice        Decimal @db.Decimal(18, 3)
   productName       String
   productArabicName String?
   productSku        String
   unitOfMeasureCode String
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  creditNote   CreditNote   @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
-  invoiceLine  InvoiceLine  @relation(fields: [invoiceLineId], references: [id], onDelete: Restrict)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creditNote    CreditNote    @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  invoiceLine   InvoiceLine   @relation(fields: [invoiceLineId], references: [id], onDelete: Restrict)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
   @@index([creditNoteId])
   @@index([organizationId, productId])
   @@map("credit_note_lines")
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String
+  body           String?
+  type           String
+  link           String?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, isRead])
+  @@index([organizationId, userId, createdAt])
+  @@map("notifications")
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+model DeviceToken {
+  id             String         @id @default(cuid())
+  userId         String
+  platform       DevicePlatform
+  token          String
+  deviceName     String?
+  appVersion     String?
+  lastSeenAt     DateTime       @default(now())
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId, isActive])
+  @@index([token])
+  @@map("device_tokens")
 }

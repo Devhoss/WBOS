@@ -22,7 +22,7 @@ const typeLabels: Record<string, string> = {
 };
 
 const statusIcon: Record<string, React.ReactNode> = {
-  ASSIGNED: <Clock className="size-4" />,
+  READY: <Clock className="size-4" />,
   IN_PROGRESS: <Truck className="size-4" />,
   COMPLETED: <CheckCircle className="size-4" />,
   CANCELLED: <XCircle className="size-4" />,
@@ -52,7 +52,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
     timeline.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
-  const canStart = task.status === "ASSIGNED";
+  const canStart = task.status === "READY";
   const canComplete = task.status === "IN_PROGRESS";
   const canCancel = task.status !== "COMPLETED" && task.status !== "CANCELLED";
 

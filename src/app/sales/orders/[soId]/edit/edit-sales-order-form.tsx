@@ -21,6 +21,7 @@ type OrderLine = {
   id: string; productId: string; unitOfMeasureId: string; orderedQuantity: string;
   unitPrice: string; totalPrice: string; productName: string; productSku: string;
   unitOfMeasureCode: string; piecesPerBox: string; description: string; notes: string;
+  freeSample: boolean;
 };
 
 type OrderData = {
@@ -62,6 +63,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
         const p = products.find((pr) => pr.id === patch.productId);
         if (p) { updated.productName = p.name; updated.productSku = p.sku; updated.unitOfMeasureId = p.unitOfMeasureId; updated.unitOfMeasureCode = p.unitOfMeasureCode; }
       }
+      if ("freeSample" in patch && patch.freeSample) { updated.unitPrice = "0"; updated.totalPrice = "0"; }
       if ("orderedQuantity" in patch || "unitPrice" in patch) updated.totalPrice = calcTotal(updated.orderedQuantity, updated.unitPrice);
       return updated;
     }));
@@ -95,6 +97,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
           unitPrice: l.unitPrice, totalPrice: l.totalPrice, productName: l.productName, productSku: l.productSku,
           unitOfMeasureCode: l.unitOfMeasureCode, piecesPerBox: l.piecesPerBox || undefined,
           description: l.description || undefined, notes: l.notes || undefined,
+          lineType: l.freeSample ? "FREE_SAMPLE" as const : undefined,
         })),
       });
       if (!result.ok) { setMessage(result.message ?? "Unable to update."); setIsPending(false); return; }
@@ -162,6 +165,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
             <tr className="border-b">
               <th className="h-10 px-3 text-left">Product</th><th className="h-10 px-3 text-left">UOM</th>
               <th className="h-10 w-28 px-3 text-right">Qty</th><th className="h-10 w-20 px-3 text-right">PC/شد</th>
+              <th className="h-10 w-16 px-3 text-center">Free</th>
               <th className="h-10 w-28 px-3 text-right">Unit Price</th>
               <th className="h-10 w-28 px-3 text-right">Total</th><th className="h-10 px-3 text-left">Desc</th>
               <th className="h-10 px-3 text-left">Notes</th><th className="h-10 w-12 px-3 text-right"></th>
@@ -178,12 +182,19 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
                 </td>
                 <td className="p-3">
                   <select className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                    value={line.unitOfMeasureId} onChange={(e) => updateLine(line.id, { unitOfMeasureId: e.target.value })}>
+                    value={line.unitOfMeasureId} onChange={(e) => {
+                      const uom = units.find((u) => u.id === e.target.value);
+                      updateLine(line.id, { unitOfMeasureId: e.target.value, unitOfMeasureCode: uom?.code ?? "" });
+                    }}>
                     {units.map((u) => (<option key={u.id} value={u.id}>{u.code}</option>))}
                   </select>
                 </td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step={stepForUnit(line.unitOfMeasureId, units)} type="number" value={line.orderedQuantity} onChange={(e) => updateLine(line.id, { orderedQuantity: e.target.value })} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step="1" type="number" value={line.piecesPerBox} onChange={(e) => updateLine(line.id, { piecesPerBox: e.target.value })} /></td>
+                <td className="p-3 text-center">
+                  <input className="size-5 cursor-pointer accent-primary" type="checkbox" checked={line.freeSample}
+                    onChange={(e) => updateLine(line.id, { freeSample: e.target.checked })} />
+                </td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" min="0" step="0.001" type="number" value={line.unitPrice} onChange={(e) => updateLine(line.id, { unitPrice: e.target.value })} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-right text-sm outline-none focus:border-primary" readOnly type="text" value={line.totalPrice} /></td>
                 <td className="p-3"><input className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} /></td>
@@ -200,7 +211,7 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
       </div>
       <div className="mt-4 flex items-center gap-3">
         <button className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-medium transition hover:bg-muted" type="button"
-          onClick={() => setLines((c) => [...c, { id: uid(), productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "", productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "" }])}>
+          onClick={() => setLines((c) => [...c, { id: uid(), productId: "", unitOfMeasureId: "", orderedQuantity: "", unitPrice: "", totalPrice: "", productName: "", productSku: "", unitOfMeasureCode: "", piecesPerBox: "", description: "", notes: "", freeSample: false }])}>
           <Plus className="size-4" />Add Line
         </button>
         {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}

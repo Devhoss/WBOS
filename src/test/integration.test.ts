@@ -305,6 +305,8 @@ describe("Shipment Service", () => {
           quantity: 50,
           productName: "Test Product",
           productSku: "TP-001",
+          unitOfMeasureId: "uom-1",
+          unitOfMeasureCode: "CTN",
           notes: undefined,
         },
       ],

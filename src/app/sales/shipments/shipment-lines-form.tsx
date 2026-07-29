@@ -8,10 +8,10 @@ import { createShipmentAction } from "../../../domains/sales/actions/create-ship
 type OrderOpt = {
   id: string; soNumber: string; customerName: string; expectedShipDate: string | null;
   isScheduled: boolean;
-  lines: Array<{ id: string; productId: string; productName: string; productSku: string; orderedQuantity: number; shippedQuantity: number; unitOfMeasureCode: string }>;
+  lines: Array<{ id: string; productId: string; productName: string; productSku: string; orderedQuantity: number; shippedQuantity: number; unitOfMeasureId: string; unitOfMeasureCode: string }>;
 };
 type WarehouseOpt = { id: string; name: string; code: string };
-type ShipmentLineInput = { salesOrderLineId: string; productId: string; quantity: string; productName: string; productSku: string; unitOfMeasureCode: string; notes: string };
+type ShipmentLineInput = { salesOrderLineId: string; productId: string; quantity: string; productName: string; productSku: string; unitOfMeasureId: string; unitOfMeasureCode: string; notes: string };
 type OrderSelection = { orderId: string; lines: ShipmentLineInput[] } | null;
 
 export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
@@ -28,7 +28,7 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
       orderId: order.id,
       lines: order.lines.map((l) => ({
         salesOrderLineId: l.id, productId: l.productId, quantity: String(l.orderedQuantity - l.shippedQuantity),
-        productName: l.productName, productSku: l.productSku, unitOfMeasureCode: l.unitOfMeasureCode, notes: "",
+        productName: l.productName, productSku: l.productSku, unitOfMeasureId: l.unitOfMeasureId, unitOfMeasureCode: l.unitOfMeasureCode, notes: "",
       })),
     };
   });
@@ -44,7 +44,7 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
       orderId: order.id,
       lines: order.lines.map((l) => ({
         salesOrderLineId: l.id, productId: l.productId, quantity: String(l.orderedQuantity - l.shippedQuantity),
-        productName: l.productName, productSku: l.productSku, unitOfMeasureCode: l.unitOfMeasureCode, notes: "",
+        productName: l.productName, productSku: l.productSku, unitOfMeasureId: l.unitOfMeasureId, unitOfMeasureCode: l.unitOfMeasureCode, notes: "",
       })),
     });
     setError(null);
@@ -87,6 +87,8 @@ export function ShipmentLinesForm({ orders, preselectedOrderId, warehouses }: {
             quantity: l.quantity,
             productName: l.productName,
             productSku: l.productSku,
+            unitOfMeasureId: l.unitOfMeasureId,
+            unitOfMeasureCode: l.unitOfMeasureCode,
             notes: l.notes || undefined,
           })),
         });
