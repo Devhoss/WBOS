@@ -82,6 +82,66 @@ type CycleCountRow = {
   countedAt: string | null;
 };
 
+type ProductCostHistoryRow = {
+  occurredAt: Date;
+  movementType: string;
+  direction: string;
+  documentNumber: string | null;
+  quantity: number;
+  unitCost: number | null;
+  totalCost: number | null;
+};
+
+type CogsRow = {
+  occurredAt: Date;
+  documentNumber: string | null;
+  movementType: string;
+  productName: string;
+  productSku: string;
+  warehouseName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+};
+
+type GrossProfitRow = {
+  invoiceNumber: string;
+  issuedAt: Date | null;
+  customerName: string;
+  productName: string;
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  marginPercent: number;
+};
+
+type CostCardHeader = {
+  productName: string;
+  productSku: string;
+  warehouseName: string;
+  averageCost: number;
+  totalQuantity: number;
+  totalValue: number;
+};
+
+type CostCardRow = {
+  occurredAt: Date;
+  movementType: string;
+  direction: string;
+  documentNumber: string | null;
+  quantity: number;
+  unitCost: number | null;
+  totalCost: number | null;
+  runningQuantity: number;
+  runningValue: number;
+  runningAvg: number;
+};
+
+type CostCardData = {
+  header: CostCardHeader;
+  entries: CostCardRow[];
+};
+
 export class InventoryReportService extends BaseReportRepository {
   async currentStock(filters: InventoryFilters, warehouseId?: string): Promise<CurrentStockRow[]> {
     const organizationId = await this.resolveOrganizationId();
@@ -192,27 +252,36 @@ export class InventoryReportService extends BaseReportRepository {
   }
 
   async valuation(filters: InventoryFilters): Promise<ValuationRow[]> {
-    const stockRows = await this.currentStock({ ...filters, warehouseId: null });
-    const productIds = stockRows.map((r) => r.productId);
+    const organizationId = await this.resolveOrganizationId();
+    const whId = filters.warehouseId;
 
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, defaultSellingPrice: true },
+    const costs = await prisma.productCost.findMany({
+      where: {
+        organizationId,
+        totalQuantity: { gt: 0 },
+        ...(whId && { warehouseId: whId }),
+        ...(filters.search && {
+          product: {
+            OR: [
+              { name: { contains: filters.search, mode: "insensitive" } },
+              { sku: { contains: filters.search, mode: "insensitive" } },
+            ],
+          },
+        }),
+      },
+      include: { product: true, warehouse: true },
+      orderBy: { averageCost: "desc" },
     });
 
-    const costMap = new Map(products.map((p) => [p.id, this.toNumber(p.defaultSellingPrice)]));
-
-    return stockRows.map((row) => {
-      const unitCost = costMap.get(row.productId) ?? 0;
-      return {
-        productId: row.productId,
-        productName: row.productName,
-        productSku: row.productSku,
-        onHand: row.onHand,
-        unitCost,
-        totalValue: row.onHand * unitCost,
-      };
-    });
+    return costs.map((c) => ({
+      productId: c.productId,
+      productName: c.product.name,
+      productSku: c.product.sku,
+      warehouseName: c.warehouse.name,
+      onHand: this.toNumber(c.totalQuantity),
+      unitCost: this.toNumber(c.averageCost),
+      totalValue: this.toNumber(c.totalValue),
+    }));
   }
 
   async stockMovement(filters: InventoryFilters): Promise<StockMovementRow[]> {
@@ -520,6 +589,293 @@ export class InventoryReportService extends BaseReportRepository {
         reservedQuantity: data.reservedQuantity,
       };
     });
+  }
+
+  async productCostHistory(filters: InventoryFilters & { productId: string; warehouseId?: string | null }): Promise<ProductCostHistoryRow[]> {
+    const organizationId = await this.resolveOrganizationId();
+    const whId = filters.warehouseId;
+
+    const entries = await prisma.inventoryLedgerEntry.findMany({
+      where: {
+        organizationId,
+        productId: filters.productId,
+        ...(whId && { warehouseId: whId }),
+        unitCost: { not: null },
+      },
+      include: {
+        transaction: { select: { documentNumber: true, type: true } },
+      },
+      orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+    });
+
+    return entries.map((e) => ({
+      occurredAt: e.occurredAt,
+      movementType: e.movementType,
+      direction: e.direction,
+      documentNumber: e.transaction.documentNumber,
+      quantity: this.toNumber(e.quantity),
+      unitCost: this.toNumber(e.unitCost),
+      totalCost: this.toNumber(e.totalCost),
+    }));
+  }
+
+  async cogs(filters: InventoryFilters): Promise<CogsRow[]> {
+    const organizationId = await this.resolveOrganizationId();
+    const dateFilter = this.buildDateFilter(filters.dateRange);
+    const whId = filters.warehouseId;
+
+    const entries = await prisma.inventoryLedgerEntry.findMany({
+      where: {
+        organizationId,
+        direction: "OUT",
+        unitCost: { not: null },
+        ...(whId && { warehouseId: whId }),
+        ...(dateFilter.gte || dateFilter.lte ? { occurredAt: { ...dateFilter } } : {}),
+        ...(filters.search && {
+          product: {
+            OR: [
+              { name: { contains: filters.search, mode: "insensitive" } },
+              { sku: { contains: filters.search, mode: "insensitive" } },
+            ],
+          },
+        }),
+      },
+      include: {
+        product: { select: { name: true, sku: true } },
+        warehouse: { select: { name: true } },
+        transaction: { select: { documentNumber: true } },
+      },
+      orderBy: { occurredAt: "desc" },
+    });
+
+    return entries.map((e) => ({
+      occurredAt: e.occurredAt,
+      documentNumber: e.transaction.documentNumber,
+      movementType: e.movementType,
+      productName: e.product.name,
+      productSku: e.product.sku,
+      warehouseName: e.warehouse.name,
+      quantity: this.toNumber(e.quantity),
+      unitCost: this.toNumber(e.unitCost),
+      totalCost: this.toNumber(e.totalCost),
+    }));
+  }
+
+  async grossProfit(filters: InventoryFilters): Promise<GrossProfitRow[]> {
+    const organizationId = await this.resolveOrganizationId();
+    const dateFilter = this.buildDateFilter(filters.dateRange);
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { in: ["ISSUED", "PAID"] },
+        ...(dateFilter.gte || dateFilter.lte ? { issuedAt: { ...dateFilter } } : {}),
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        issuedAt: true,
+        customerName: true,
+      },
+      orderBy: { issuedAt: "desc" },
+    });
+
+    if (invoices.length === 0) return [];
+
+    const invoiceIds = invoices.map((i) => i.id);
+
+    const invoiceLines = await prisma.invoiceLine.findMany({
+      where: { invoiceId: { in: invoiceIds } },
+      select: {
+        id: true,
+        invoiceId: true,
+        salesOrderLineId: true,
+        productName: true,
+        totalPrice: true,
+      },
+    });
+
+    const soLineIds = [...new Set(invoiceLines.map((il) => il.salesOrderLineId))];
+
+    const shipmentLines = await prisma.shipmentLine.findMany({
+      where: { salesOrderLineId: { in: soLineIds } },
+      select: { id: true, salesOrderLineId: true, shipmentId: true },
+      orderBy: { id: "asc" },
+    });
+
+    const soLineToShipmentLine = new Map(shipmentLines.map((sl) => [sl.salesOrderLineId, sl]));
+    const shipmentIds = [...new Set(shipmentLines.map((sl) => sl.shipmentId))];
+
+    const shipmentLinesByShipment = new Map<string, typeof shipmentLines>();
+    for (const sl of shipmentLines) {
+      const arr = shipmentLinesByShipment.get(sl.shipmentId) ?? [];
+      arr.push(sl);
+      shipmentLinesByShipment.set(sl.shipmentId, arr);
+    }
+
+    const transactions = await prisma.inventoryTransaction.findMany({
+      where: {
+        organizationId,
+        type: "SALE",
+        referenceType: "SHIPMENT",
+        referenceId: { in: shipmentIds },
+      },
+      select: { id: true, referenceId: true },
+    });
+
+    const txMap = new Map(transactions.map((t) => [t.referenceId!, t.id]));
+    const txIds = transactions.map((t) => t.id);
+
+    const txLines = await prisma.inventoryTransactionLine.findMany({
+      where: { transactionId: { in: txIds } },
+      orderBy: [{ transactionId: "asc" }, { createdAt: "asc" }],
+      select: { id: true, transactionId: true },
+    });
+
+    const txLinesByTx = new Map<string, typeof txLines>();
+    for (const tl of txLines) {
+      const arr = txLinesByTx.get(tl.transactionId) ?? [];
+      arr.push(tl);
+      txLinesByTx.set(tl.transactionId, arr);
+    }
+
+    const txLineIds = txLines.map((tl) => tl.id);
+
+    const ledgerEntries = await prisma.inventoryLedgerEntry.findMany({
+      where: {
+        transactionLineId: { in: txLineIds },
+        movementType: "SALE",
+        direction: "OUT",
+      },
+      select: { transactionLineId: true, totalCost: true },
+    });
+
+    const costByTxLine = new Map(ledgerEntries.map((le) => [le.transactionLineId, this.toNumber(le.totalCost)]));
+
+    const invoiceMap = new Map(invoices.map((inv) => [inv.id, inv]));
+    const rows: GrossProfitRow[] = [];
+
+    for (const il of invoiceLines) {
+      const inv = invoiceMap.get(il.invoiceId);
+      if (!inv) continue;
+
+      const revenue = this.toNumber(il.totalPrice);
+      let cogs = 0;
+
+      const shipmentLine = soLineToShipmentLine.get(il.salesOrderLineId);
+      if (shipmentLine) {
+        const linesInShipment = shipmentLinesByShipment.get(shipmentLine.shipmentId) ?? [];
+        const position = linesInShipment.findIndex((sl) => sl.id === shipmentLine.id);
+        if (position !== -1) {
+          const txId = txMap.get(shipmentLine.shipmentId);
+          if (txId) {
+            const linesInTx = txLinesByTx.get(txId) ?? [];
+            const matchedTxLine = linesInTx[position];
+            if (matchedTxLine) {
+              cogs = costByTxLine.get(matchedTxLine.id) ?? 0;
+            }
+          }
+        }
+      }
+
+      const grossProfit = revenue - cogs;
+      const marginPercent = revenue > 0 ? Math.round((grossProfit / revenue) * 10000) / 100 : 0;
+
+      rows.push({
+        invoiceNumber: inv.invoiceNumber,
+        issuedAt: inv.issuedAt,
+        customerName: inv.customerName,
+        productName: il.productName,
+        revenue,
+        cogs,
+        grossProfit,
+        marginPercent,
+      });
+    }
+
+    return rows;
+  }
+
+  async productCostCard(
+    productId: string,
+    warehouseId: string,
+  ): Promise<CostCardData> {
+    const organizationId = await this.resolveOrganizationId();
+
+    const productCost = await prisma.productCost.findUnique({
+      where: {
+        organizationId_productId_warehouseId: {
+          organizationId,
+          productId,
+          warehouseId,
+        },
+      },
+      include: { product: true, warehouse: true },
+    });
+
+    const header: CostCardHeader = productCost
+      ? {
+          productName: productCost.product.name,
+          productSku: productCost.product.sku,
+          warehouseName: productCost.warehouse.name,
+          averageCost: this.toNumber(productCost.averageCost),
+          totalQuantity: this.toNumber(productCost.totalQuantity),
+          totalValue: this.toNumber(productCost.totalValue),
+        }
+      : {
+          productName: "Unknown",
+          productSku: "",
+          warehouseName: "Unknown",
+          averageCost: 0,
+          totalQuantity: 0,
+          totalValue: 0,
+        };
+
+    const entries = await prisma.inventoryLedgerEntry.findMany({
+      where: {
+        organizationId,
+        productId,
+        warehouseId,
+        unitCost: { not: null },
+      },
+      include: {
+        transaction: { select: { documentNumber: true, type: true } },
+      },
+      orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+    });
+
+    const { Decimal } = Prisma;
+    let runningQty = new Decimal(0);
+    let runningVal = new Decimal(0);
+    const costCardRows: CostCardRow[] = entries.map((e) => {
+      const qty = new Decimal(this.toNumber(e.quantity));
+      const totalCost = new Decimal(this.toNumber(e.totalCost));
+
+      if (e.direction === "IN") {
+        runningQty = runningQty.add(qty);
+        runningVal = runningVal.add(totalCost);
+      } else {
+        runningQty = runningQty.sub(qty);
+        runningVal = runningVal.sub(totalCost);
+      }
+
+      const runningAvg = runningQty.isZero() ? 0 : this.toNumber(runningVal.div(runningQty));
+
+      return {
+        occurredAt: e.occurredAt,
+        movementType: e.movementType,
+        direction: e.direction,
+        documentNumber: e.transaction.documentNumber,
+        quantity: this.toNumber(e.quantity),
+        unitCost: this.toNumber(e.unitCost),
+        totalCost: this.toNumber(e.totalCost),
+        runningQuantity: this.toNumber(runningQty),
+        runningValue: this.toNumber(runningVal),
+        runningAvg,
+      };
+    });
+
+    return { header, entries: costCardRows };
   }
 
   async cycleCountHistory(filters: InventoryFilters): Promise<CycleCountRow[]> {

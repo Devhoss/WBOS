@@ -21,7 +21,6 @@ export type TaskFilters = {
   referenceType?: string;
   referenceId?: string;
   filter?: "today" | "scheduled";
-  scheduleBoundary?: Date;
   page?: number;
   pageSize?: number;
 };
@@ -52,30 +51,9 @@ export class TaskRepository {
     if (filters.referenceType) where.referenceType = filters.referenceType as any;
     if (filters.referenceId) where.referenceId = filters.referenceId;
     if (filters.filter === "today") {
-      if (filters.scheduleBoundary) {
-        where.OR = [
-          { status: { in: ["READY", "IN_PROGRESS"] } },
-          { status: "SCHEDULED" as const, dueAt: { lt: filters.scheduleBoundary } },
-        ];
-      } else {
-        where.status = { in: ["READY", "IN_PROGRESS"] };
-      }
+      where.status = { in: ["READY", "IN_PROGRESS"] };
     } else if (filters.filter === "scheduled") {
       where.status = "SCHEDULED";
-      if (filters.scheduleBoundary) {
-        where.dueAt = { gte: filters.scheduleBoundary };
-      }
-    }
-
-    if (filters.filter === "today" && filters.scheduleBoundary) {
-      await prisma.task.updateMany({
-        where: {
-          organizationId,
-          status: "SCHEDULED",
-          dueAt: { lt: filters.scheduleBoundary },
-        },
-        data: { status: "READY" },
-      });
     }
 
     const [data, total] = await Promise.all([

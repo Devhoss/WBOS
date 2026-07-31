@@ -34,10 +34,8 @@ export class TaskApplicationService {
   ): Promise<{ tasks: TaskSummary[]; total: number }> {
     requireMinimumRole(context, "WAREHOUSE");
     const calendar = new BusinessCalendar(context.organization.timezone);
-    const { data, total } = await this.domain.findMany(context.organizationId, {
-      ...filters,
-      scheduleBoundary: calendar.startOfTomorrowUTC(),
-    });
+    const scheduleBoundary = calendar.startOfTomorrowUTC();
+    const { data, total } = await this.domain.findMany(context.organizationId, filters, scheduleBoundary);
     return {
       tasks: data.map((t) => ({
         ...t,
@@ -53,7 +51,8 @@ export class TaskApplicationService {
     taskId: string,
   ): Promise<ComposedTaskDetail | null> {
     requireMinimumRole(context, "WAREHOUSE");
-    return this.domain.findById(context.organizationId, taskId);
+    const calendar = new BusinessCalendar(context.organization.timezone);
+    return this.domain.findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
   }
 
   async startTask(
@@ -92,7 +91,8 @@ export class TaskApplicationService {
     taskId: string,
   ): Promise<PickingDetail | null> {
     requireMinimumRole(context, "WAREHOUSE");
-    return this.domain.getPickingDetail(context.organizationId, taskId);
+    const calendar = new BusinessCalendar(context.organization.timezone);
+    return this.domain.getPickingDetail(context.organizationId, taskId, calendar.startOfTomorrowUTC());
   }
 
   async updateTaskLine(

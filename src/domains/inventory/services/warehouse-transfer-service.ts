@@ -1,10 +1,14 @@
+import { Prisma } from "@prisma/client";
+
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { ProductRepository } from "@/domains/products/repositories/product-repository";
 import { WarehouseRepository } from "@/domains/warehouses/repositories/warehouse-repository";
+import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
+import { CostingService } from "./costing-service";
 import { InventoryPostingService } from "./inventory-posting-service";
 import { StockBalanceService } from "./stock-balance-service";
 import type { WarehouseTransferInput } from "../validation/warehouse-transfer-schema";
@@ -14,6 +18,7 @@ export class WarehouseTransferService {
     private readonly products = new ProductRepository(),
     private readonly warehouses = new WarehouseRepository(),
     private readonly posting = new InventoryPostingService(),
+    private readonly costing = new CostingService(),
     private readonly balances = new StockBalanceService(),
     private readonly documents = new DocumentNumberService(),
     private readonly activityLogs = new ActivityLogRepository(),
@@ -63,35 +68,85 @@ export class WarehouseTransferService {
       prefix: "WT",
     });
 
-    const transaction = await this.posting.post({
-      organizationId: context.organizationId,
-      type: "TRANSFER_OUT",
-      documentNumber,
-      occurredAt: input.occurredAt ?? now,
-      createdById: context.userId,
-      notes: input.notes,
-      lines: lines.map((line) => ({
-        productId: line.product.id,
-        unitOfMeasureId: line.product.unitOfMeasureId,
-        quantity: line.quantity,
-        fromWarehouseId: sourceWarehouse.id,
-        toWarehouseId: destinationWarehouse.id,
-        notes: line.notes,
-        ledgerEntries: [
-          {
-            warehouseId: sourceWarehouse.id,
-            movementType: "TRANSFER_OUT",
-            direction: "OUT",
+    const transaction = await prisma.$transaction(async (tx) => {
+      const txn = await this.posting.post(
+        {
+          organizationId: context.organizationId,
+          type: "TRANSFER_OUT",
+          documentNumber,
+          occurredAt: input.occurredAt ?? now,
+          createdById: context.userId,
+          notes: input.notes,
+          lines: lines.map((line) => ({
+            productId: line.product.id,
+            unitOfMeasureId: line.product.unitOfMeasureId,
             quantity: line.quantity,
-          },
-          {
-            warehouseId: destinationWarehouse.id,
-            movementType: "TRANSFER_IN",
-            direction: "IN",
-            quantity: line.quantity,
-          },
-        ],
-      })),
+            fromWarehouseId: sourceWarehouse.id,
+            toWarehouseId: destinationWarehouse.id,
+            notes: line.notes,
+            ledgerEntries: [
+              {
+                warehouseId: sourceWarehouse.id,
+                movementType: "TRANSFER_OUT",
+                direction: "OUT",
+                quantity: line.quantity,
+              },
+              {
+                warehouseId: destinationWarehouse.id,
+                movementType: "TRANSFER_IN",
+                direction: "IN",
+                quantity: line.quantity,
+              },
+            ],
+          })),
+        },
+        tx,
+      );
+
+      if (txn) {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const invLine = txn.lines[i];
+          if (!invLine) continue;
+
+          let outEntry: { id: string } | undefined;
+          let inEntry: { id: string } | undefined;
+
+          for (const entry of invLine.ledgerEntries) {
+            if (entry.direction === "OUT") outEntry = entry;
+            if (entry.direction === "IN") inEntry = entry;
+          }
+
+          if (outEntry) {
+            const cost = await this.costing.recordIssue(
+              {
+                organizationId: context.organizationId,
+                productId: line.product.id,
+                warehouseId: sourceWarehouse.id,
+                quantity: new Prisma.Decimal(Number(line.quantity)),
+                ledgerEntryId: outEntry.id,
+              },
+              tx,
+            );
+
+            if (inEntry) {
+              await this.costing.recordReceipt(
+                {
+                  organizationId: context.organizationId,
+                  productId: line.product.id,
+                  warehouseId: destinationWarehouse.id,
+                  quantity: new Prisma.Decimal(Number(line.quantity)),
+                  unitCost: cost.unitCost,
+                  ledgerEntryId: inEntry.id,
+                },
+                tx,
+              );
+            }
+          }
+        }
+      }
+
+      return txn;
     });
 
     const productSummary = lines.map((line) => ({

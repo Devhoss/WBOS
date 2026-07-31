@@ -10,6 +10,7 @@ import { AuthenticatedRequestContextService } from "@/infrastructure/request/aut
 import { statusColorClass, formatStatus } from "@/components/status-colors";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
+import { BusinessCalendar } from "@/lib/business-calendar";
 
 import { TaskDetailActions } from "./task-detail-actions";
 
@@ -31,7 +32,8 @@ const statusIcon: Record<string, React.ReactNode> = {
 export async function generateMetadata({ params }: { params: Promise<{ taskId: string }> }): Promise<Metadata> {
   const { taskId } = await params;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const task = await new TaskDomainService().findById(context.organizationId, taskId);
+  const calendar = new BusinessCalendar(context.organization.timezone);
+  const task = await new TaskDomainService().findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
   if (!task) return { title: "Not Found" };
   return { title: task.taskNumber };
 }
@@ -39,8 +41,9 @@ export async function generateMetadata({ params }: { params: Promise<{ taskId: s
 export default async function TaskDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
+  const calendar = new BusinessCalendar(context.organization.timezone);
   const domain = new TaskDomainService();
-  const task = await domain.findById(context.organizationId, taskId);
+  const task = await domain.findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
   if (!task) notFound();
 
   const timeline = await getEntityTimeline(context.organizationId, "Task", taskId);

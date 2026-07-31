@@ -22,6 +22,8 @@ export type CreateInventoryTransactionLineInput = {
   productId: string;
   unitOfMeasureId: string;
   quantity: Prisma.Decimal.Value;
+  unitCost?: Prisma.Decimal.Value | null;
+  totalCost?: Prisma.Decimal.Value | null;
   fromWarehouseId?: string | null;
   toWarehouseId?: string | null;
   adjustmentReasonId?: string | null;
@@ -55,6 +57,8 @@ export class InventoryTransactionRepository {
         productId: input.productId,
         unitOfMeasureId: input.unitOfMeasureId,
         quantity: input.quantity,
+        unitCost: input.unitCost ?? null,
+        totalCost: input.totalCost ?? null,
         fromWarehouseId: input.fromWarehouseId ?? null,
         toWarehouseId: input.toWarehouseId ?? null,
         adjustmentReasonId: input.adjustmentReasonId ?? null,
@@ -71,6 +75,7 @@ export class InventoryTransactionRepository {
       },
       include: {
         lines: {
+          orderBy: { createdAt: "asc" },
           include: {
             product: true,
             unitOfMeasure: true,

@@ -259,11 +259,24 @@ Support selling products and receiving payments.
 * Customer balances
 * Account statements
 
+## Costing Integration
+
+Completed as part of Inventory Costing Foundation (Milestones 1-4):
+
+* Moving Weighted Average cost engine (`CostingService`)
+* Goods Receipt integration — `recordReceipt()` on PO receipt
+* Shipment COGS — `recordIssue()` on delivery
+* Warehouse transfers, adjustments, cycle counts, manual receipts
+* `ProductCost` cache with optimistic concurrency
+* Cost fields (`unitCost`, `totalCost`) on ledger entries and transaction lines
+
 ## Business Value
 
 The business can complete the entire sales workflow.
 
 Inventory, customers, and payments are fully integrated.
+
+COGS is recorded automatically at shipment delivery.
 
 ## Exit Criteria
 
@@ -275,6 +288,8 @@ Inventory, customers, and payments are fully integrated.
 ---
 
 # Phase 6 — Reporting & Analytics
+
+**In progress** — Costing reports completed
 
 ## Goal
 
@@ -288,8 +303,9 @@ Transform operational data into business intelligence.
 * Purchasing reports
 * Customer reports
 * Supplier reports
-* Profit analysis
-* Inventory valuation
+* Profit analysis ✓ (Gross Profit, COGS reports)
+* Inventory valuation ✓ (now uses actual average cost)
+* Cost audit trail ✓ (Product Cost History, Cost Card)
 * Aging reports
 * Global search
 * Notifications ✓ (API, DB, FCM push, mobile)
@@ -297,6 +313,8 @@ Transform operational data into business intelligence.
 ## Business Value
 
 The business gains visibility into operations and performance.
+
+Costing reports provide accurate inventory valuation and per-invoice gross margin.
 
 ## Exit Criteria
 
@@ -426,7 +444,31 @@ The business can receive imported goods.
 
 ---
 
-## Milestone 5
+## Milestone 5 — Costing Foundation
+
+### Milestone 5.1 — Schema & Cost Engine
+
+Cost fields on ledger/transaction lines. ProductCost cache. CostingService with moving weighted average.
+
+### Milestone 5.2 — Goods Receipt Integration
+
+recordReceipt() called on PO receive.
+
+### Milestone 5.3 — Shipment COGS
+
+recordIssue() called on delivery. Index-based line matching.
+
+### Milestone 5.4 — All Movement Types
+
+Transfers, adjustments, cycle counts, manual receipts all wired with CostingService.
+
+### Milestone 5.5 — Valuation & Reporting
+
+Inventory Valuation (uses ProductCost.averageCost), Product Cost History, COGS report, Gross Profit report (per-invoice matching), Product Cost Card (audit trail with running average).
+
+---
+
+## Milestone 6
 
 Sales Complete
 

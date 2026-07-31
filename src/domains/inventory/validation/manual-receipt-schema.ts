@@ -15,6 +15,7 @@ export const manualReceiptSchema = z.object({
       z.object({
         productId: z.string().trim().min(1, "Product is required."),
         quantity: z.coerce.number().positive("Quantity must be greater than zero."),
+        unitCost: z.coerce.number().positive("Unit cost must be greater than zero.").optional(),
         notes: optionalText,
       }),
     )

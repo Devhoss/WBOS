@@ -43,6 +43,10 @@ export async function getFastMovingItems(f: ReportFilters) { return inventory.fa
 export async function getNegativeStock() { return inventory.negativeStock(); }
 export async function getReservedStock() { return inventory.reservedStock(); }
 export async function getCycleCountHistory(f: ReportFilters) { return inventory.cycleCountHistory(f); }
+export async function getProductCostHistory(productId: string, warehouseId: string | null, f: ReportFilters) { return inventory.productCostHistory({ ...f, productId, warehouseId }); }
+export async function getCogs(f: ReportFilters) { return inventory.cogs(f); }
+export async function getGrossProfit(f: ReportFilters) { return inventory.grossProfit(f); }
+export async function getProductCostCard(productId: string, warehouseId: string) { return inventory.productCostCard(productId, warehouseId); }
 
 /* ── Financial ── */
 export async function getCustomerStatement(customerId: string, f: ReportFilters) { return financial.customerStatement(customerId, f); }

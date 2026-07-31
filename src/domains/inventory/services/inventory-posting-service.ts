@@ -11,12 +11,16 @@ export type PostInventoryLedgerEntryInput = {
   movementType: InventoryMovementType;
   direction: InventoryDirection;
   quantity: Prisma.Decimal.Value;
+  unitCost?: Prisma.Decimal.Value | null;
+  totalCost?: Prisma.Decimal.Value | null;
 };
 
 export type PostInventoryTransactionLineInput = {
   productId: string;
   unitOfMeasureId: string;
   quantity: Prisma.Decimal.Value;
+  unitCost?: Prisma.Decimal.Value | null;
+  totalCost?: Prisma.Decimal.Value | null;
   fromWarehouseId?: string | null;
   toWarehouseId?: string | null;
   adjustmentReasonId?: string | null;
@@ -62,6 +66,8 @@ export class InventoryPostingService {
           productId: inputLine.productId,
           unitOfMeasureId: inputLine.unitOfMeasureId,
           quantity: inputLine.quantity,
+          unitCost: inputLine.unitCost,
+          totalCost: inputLine.totalCost,
           fromWarehouseId: inputLine.fromWarehouseId,
           toWarehouseId: inputLine.toWarehouseId,
           adjustmentReasonId: inputLine.adjustmentReasonId,
@@ -78,6 +84,8 @@ export class InventoryPostingService {
             movementType: entry.movementType,
             direction: entry.direction,
             quantity: entry.quantity,
+            unitCost: entry.unitCost,
+            totalCost: entry.totalCost,
             occurredAt,
           })),
         );

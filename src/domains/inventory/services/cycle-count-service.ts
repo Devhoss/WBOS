@@ -1,4 +1,4 @@
-import type { InventoryDirection, InventoryMovementType } from "@prisma/client";
+import { Prisma, type InventoryDirection, type InventoryMovementType } from "@prisma/client";
 
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
@@ -8,6 +8,7 @@ import type { AuthenticatedRequestContext } from "@/infrastructure/request/authe
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { CycleCountRepository } from "../repositories/cycle-count-repository";
+import { CostingService } from "./costing-service";
 import { InventoryPostingService } from "./inventory-posting-service";
 import { StockBalanceService } from "./stock-balance-service";
 import type { CreateCycleCountInput, UpdateCycleCountLineInput } from "../validation/cycle-count-schema";
@@ -18,6 +19,7 @@ export class CycleCountService {
     private readonly warehouses = new WarehouseRepository(),
     private readonly documents = new DocumentNumberService(),
     private readonly posting = new InventoryPostingService(),
+    private readonly costing = new CostingService(),
     private readonly balances = new StockBalanceService(),
     private readonly activityLogs = new ActivityLogRepository(),
   ) {}
@@ -149,7 +151,7 @@ export class CycleCountService {
       );
 
       if (postingLines.length > 0) {
-        await this.posting.post(
+        const txn = await this.posting.post(
           {
             organizationId: context.organizationId,
             type: "ADJUSTMENT_IN" as never,
@@ -163,6 +165,49 @@ export class CycleCountService {
           },
           tx,
         );
+
+        if (txn) {
+          for (let i = 0; i < postingLines.length; i++) {
+            const invLine = txn.lines[i];
+            if (!invLine) continue;
+
+            const pl = postingLines[i];
+            const isPositive = pl.ledgerEntries[0]?.direction === "IN";
+
+            for (const entry of invLine.ledgerEntries) {
+              if (isPositive) {
+                const avgCost = (await this.costing.getAverageCost(
+                  context.organizationId,
+                  pl.productId,
+                  count.warehouseId,
+                )) ?? new Prisma.Decimal(0);
+
+                await this.costing.recordReceipt(
+                  {
+                    organizationId: context.organizationId,
+                    productId: pl.productId,
+                    warehouseId: count.warehouseId,
+                    quantity: new Prisma.Decimal(pl.quantity),
+                    unitCost: avgCost,
+                    ledgerEntryId: entry.id,
+                  },
+                  tx,
+                );
+              } else {
+                await this.costing.recordIssue(
+                  {
+                    organizationId: context.organizationId,
+                    productId: pl.productId,
+                    warehouseId: count.warehouseId,
+                    quantity: new Prisma.Decimal(pl.quantity),
+                    ledgerEntryId: entry.id,
+                  },
+                  tx,
+                );
+              }
+            }
+          }
+        }
       }
 
       await this.counts.updateStatus(context.organizationId, id, "APPROVED", {

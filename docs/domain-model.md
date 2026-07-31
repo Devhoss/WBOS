@@ -300,6 +300,34 @@ Future fields:
 
 ---
 
+# Product Cost
+
+## Purpose
+
+Represents the current moving weighted average cost for a product in a specific warehouse.
+
+ProductCost is a derived cache computed from Inventory Ledger entries. The ledger is the source of truth.
+
+## Fields
+
+* Organization
+* Product
+* Warehouse
+* Average Cost
+* Total Quantity
+* Total Value
+* Updated At (optimistic concurrency)
+
+## Unique Constraint
+
+`(organizationId, productId, warehouseId)` — one cost record per product per warehouse.
+
+## Reconciliation
+
+`reconcile()` can rebuild ProductCost from Inventory Ledger entries if the cache becomes stale.
+
+---
+
 # Inventory Transaction
 
 ## Purpose
@@ -507,6 +535,28 @@ Reports never own business data.
 They only consume existing data.
 
 Reports should never modify business entities.
+
+## Costing Reports
+
+### Inventory Valuation
+
+Shows current on-hand stock valued at the moving weighted average cost (`ProductCost.averageCost`). Replaces the previous approach that used `Product.defaultSellingPrice` as a cost proxy.
+
+### Product Cost History
+
+Every cost-affecting event for a given product (optionally filtered by warehouse). Displays movement type (PURCHASE, SALE, TRANSFER, etc.), direction, quantity, unit cost, and total cost. Sourced from `InventoryLedgerEntry` where `unitCost IS NOT NULL`.
+
+### Cost of Goods Sold (COGS)
+
+All outbound inventory movements with their associated unit cost and total cost. Filters by date range, warehouse, product search, and movement type. Sourced from `InventoryLedgerEntry` where `direction = 'OUT'` and `unitCost IS NOT NULL`.
+
+### Gross Profit
+
+Per-invoice revenue vs COGS. Revenue from `InvoiceLine.totalPrice`. COGS traced through the chain: `InvoiceLine → SalesOrderLine → ShipmentLine → InventoryTransactionLine → InventoryLedgerEntry.totalCost`. Margin percentage calculated per line.
+
+### Product Cost Card (Audit Trail)
+
+Full cost audit trail for a single product in a single warehouse. Shows a summary header (current avg cost, on-hand qty, total value) plus a chronological transaction detail with running quantity, running value, and running average cost columns.
 
 ---
 

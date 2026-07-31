@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
+import { CostingService } from "@/domains/inventory/services/costing-service";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
 import { ProductRepository } from "@/domains/products/repositories/product-repository";
 import { WarehouseRepository } from "@/domains/warehouses/repositories/warehouse-repository";
@@ -18,6 +19,7 @@ export class GoodsReceiptService {
     private readonly products = new ProductRepository(),
     private readonly warehouses = new WarehouseRepository(),
     private readonly posting = new InventoryPostingService(),
+    private readonly costing = new CostingService(),
     private readonly documents = new DocumentNumberService(),
     private readonly activityLogs = new ActivityLogRepository(),
   ) {}
@@ -116,6 +118,32 @@ export class GoodsReceiptService {
         },
         tx,
       );
+
+      if (!transaction) {
+        throw new BusinessError("Failed to create inventory transaction.", "INVENTORY_TRANSACTION_FAILED");
+      }
+
+      for (let i = 0; i < processedLines.length; i++) {
+        const receiptLine = processedLines[i];
+        const invLine = transaction.lines[i];
+        if (!invLine) continue;
+
+        for (const entry of invLine.ledgerEntries) {
+          if (entry.direction !== "IN") continue;
+
+          await this.costing.recordReceipt(
+            {
+              organizationId: context.organizationId,
+              productId: invLine.productId,
+              warehouseId: entry.warehouseId,
+              quantity: new Prisma.Decimal(Number(entry.quantity)),
+              unitCost: new Prisma.Decimal(Number(receiptLine.poLine.unitCost)),
+              ledgerEntryId: entry.id,
+            },
+            tx,
+          );
+        }
+      }
 
       for (const line of processedLines) {
         await tx.purchaseOrderLine.updateMany({

@@ -13,6 +13,8 @@ export type CreateInventoryLedgerEntryInput = {
   movementType: InventoryMovementType;
   direction: InventoryDirection;
   quantity: Prisma.Decimal.Value;
+  unitCost?: Prisma.Decimal.Value | null;
+  totalCost?: Prisma.Decimal.Value | null;
   occurredAt: Date;
 };
 

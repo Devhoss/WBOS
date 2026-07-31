@@ -364,6 +364,7 @@ async function main() {
           for (let i = 0; i < po.lines.length; i++) {
             const l = po.lines[i];
             const lineId = "demo-txl-" + grnId + "-" + String(i + 1).padStart(2, "0");
+            const lineCost = l.unitCost * l.received;
             const txl = await prisma.inventoryTransactionLine.create({
               data: {
                 id: lineId,
@@ -372,6 +373,8 @@ async function main() {
                 productId: l.productId,
                 unitOfMeasureId: DEMO_UOM_PC,
                 quantity: l.received,
+                unitCost: l.unitCost,
+                totalCost: lineCost,
                 toWarehouseId: whMain.id,
               },
             });
@@ -387,7 +390,32 @@ async function main() {
                 movementType: "PURCHASE_RECEIPT",
                 direction: "IN",
                 quantity: l.received,
+                unitCost: l.unitCost,
+                totalCost: lineCost,
                 occurredAt: po.grnAt,
+              },
+            });
+
+            await prisma.productCost.upsert({
+              where: {
+                organizationId_productId_warehouseId: {
+                  organizationId: orgId,
+                  productId: l.productId,
+                  warehouseId: whMain.id,
+                },
+              },
+              create: {
+                organizationId: orgId,
+                productId: l.productId,
+                warehouseId: whMain.id,
+                averageCost: l.unitCost,
+                totalQuantity: l.received,
+                totalValue: lineCost,
+              },
+              update: {
+                totalQuantity: { increment: l.received },
+                totalValue: { increment: lineCost },
+                averageCost: l.unitCost,
               },
             });
           }
@@ -481,6 +509,8 @@ async function main() {
           shipmentId: shpRec.id,
           salesOrderLineId: solRec.id,
           productId: l.productId,
+          unitOfMeasureId: DEMO_UOM_PC,
+          unitOfMeasureCode: "PC",
           quantity: l.shipped,
           pickedQuantity: l.shipped,
           productName: productCache[l.productId].name,
@@ -511,6 +541,20 @@ async function main() {
           for (let i = 0; i < so.lines.length; i++) {
             const l = so.lines[i];
             if (l.shipped <= 0) continue;
+
+            const pc = await prisma.productCost.findUnique({
+              where: {
+                organizationId_productId_warehouseId: {
+                  organizationId: orgId,
+                  productId: l.productId,
+                  warehouseId: sh.warehouseId,
+                },
+              },
+            });
+
+            const avgCost = pc ? Number(pc.averageCost) : 0;
+            const outCost = avgCost * l.shipped;
+
             const lineId = "demo-txl-s-" + sh.shpId + "-" + String(i + 1).padStart(2, "0");
             const txl = await prisma.inventoryTransactionLine.create({
               data: {
@@ -520,6 +564,8 @@ async function main() {
                 productId: l.productId,
                 unitOfMeasureId: DEMO_UOM_PC,
                 quantity: l.shipped,
+                unitCost: avgCost,
+                totalCost: outCost,
                 fromWarehouseId: sh.warehouseId,
               },
             });
@@ -535,9 +581,23 @@ async function main() {
                 movementType: "SALE",
                 direction: "OUT",
                 quantity: l.shipped,
+                unitCost: avgCost,
+                totalCost: outCost,
                 occurredAt: sh.deliveredAt,
               },
             });
+
+            if (pc) {
+              const newQty = Number(pc.totalQuantity) - l.shipped;
+              const newVal = Number(pc.totalValue) - outCost;
+              await prisma.productCost.update({
+                where: { id: pc.id },
+                data: {
+                  totalQuantity: newQty,
+                  totalValue: newVal,
+                },
+              });
+            }
           }
         }
       }

@@ -91,6 +91,26 @@ export class TaskDomainService {
     private readonly activityLogs = new ActivityLogRepository(),
   ) {}
 
+  /**
+   * Promotes SCHEDULED tasks whose dueAt has arrived to READY.
+   *
+   * Called before every read to ensure a consistent canonical status.
+   *
+   * TODO: This is intentionally centralized here rather than embedded in the
+   * repository so it can be extracted into a background scheduler or domain
+   * event handler once that infrastructure exists.
+   */
+  async ensurePromotedTasks(organizationId: string, scheduleBoundary: Date): Promise<void> {
+    await prisma.task.updateMany({
+      where: {
+        organizationId,
+        status: "SCHEDULED",
+        dueAt: { lt: scheduleBoundary },
+      },
+      data: { status: "READY" },
+    });
+  }
+
   async createFromShipment(
     context: AuthenticatedRequestContext,
     shipment: any,
@@ -183,7 +203,11 @@ export class TaskDomainService {
   async findById(
     organizationId: string,
     taskId: string,
+    scheduleBoundary?: Date,
   ): Promise<ComposedTaskDetail | null> {
+    if (scheduleBoundary) {
+      await this.ensurePromotedTasks(organizationId, scheduleBoundary);
+    }
     const task = await this.tasks.findById(organizationId, taskId);
     if (!task) return null;
     return this.composeDetail(organizationId, task);
@@ -192,7 +216,11 @@ export class TaskDomainService {
   async findMany(
     organizationId: string,
     filters: TaskFilters = {},
+    scheduleBoundary?: Date,
   ): Promise<{ data: TaskSummary[]; total: number }> {
+    if (scheduleBoundary) {
+      await this.ensurePromotedTasks(organizationId, scheduleBoundary);
+    }
     const { data, total } = await this.tasks.findMany(organizationId, filters);
     return { data: data.map((t) => this.toSummary(t)), total };
   }
@@ -702,7 +730,11 @@ export class TaskDomainService {
   async getPickingDetail(
     organizationId: string,
     taskId: string,
+    scheduleBoundary?: Date,
   ): Promise<PickingDetail | null> {
+    if (scheduleBoundary) {
+      await this.ensurePromotedTasks(organizationId, scheduleBoundary);
+    }
     const task = await this.tasks.findById(organizationId, taskId);
     if (!task) return null;
 

@@ -353,6 +353,7 @@ model Organization {
 
   notifications Notification[]
   quotations    Quotation[]
+  productCosts  ProductCost[]
 
   @@map("organizations")
 }
@@ -390,6 +391,7 @@ model Product {
   returnOrderLines          ReturnOrderLine[]
   creditNoteLines           CreditNoteLine[]
   quotationLines            QuotationLine[]
+  productCosts              ProductCost[]
 
   @@unique([organizationId, sku])
   @@unique([organizationId, barcode])
@@ -529,6 +531,7 @@ model Warehouse {
   shipments                     Shipment[]
   cycleCounts                   CycleCount[]
   tasks                         Task[]
+  productCosts                  ProductCost[]
 
   @@unique([organizationId, code])
   @@index([organizationId, archivedAt])
@@ -1026,6 +1029,8 @@ model InventoryTransactionLine {
   productId          String
   unitOfMeasureId    String
   quantity           Decimal  @db.Decimal(18, 6)
+  unitCost           Decimal? @db.Decimal(18, 6)
+  totalCost          Decimal? @db.Decimal(18, 6)
   fromWarehouseId    String?
   toWarehouseId      String?
   adjustmentReasonId String?
@@ -1059,6 +1064,8 @@ model InventoryLedgerEntry {
   movementType      InventoryMovementType
   direction         InventoryDirection
   quantity          Decimal               @db.Decimal(18, 6)
+  unitCost          Decimal?              @db.Decimal(18, 6)
+  totalCost         Decimal?              @db.Decimal(18, 6)
   occurredAt        DateTime
   createdAt         DateTime              @default(now())
 
@@ -1074,7 +1081,29 @@ model InventoryLedgerEntry {
   @@index([organizationId, occurredAt])
   @@index([transactionId])
   @@index([transactionLineId])
+  @@index([organizationId, movementType, direction])
+  @@index([organizationId, productId, warehouseId, occurredAt], map: "idx_ledger_org_product_warehouse_occurred")
   @@map("inventory_ledger_entries")
+}
+
+model ProductCost {
+  id              String   @id @default(cuid())
+  organizationId  String
+  productId       String
+  warehouseId     String
+  averageCost     Decimal  @db.Decimal(18, 6)
+  totalQuantity   Decimal  @db.Decimal(18, 6)
+  totalValue      Decimal  @db.Decimal(18, 6)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, productId, warehouseId])
+  @@index([organizationId, productId])
+  @@index([organizationId, warehouseId])
+  @@map("product_costs")
 }
 
 model OrganizationMembership {

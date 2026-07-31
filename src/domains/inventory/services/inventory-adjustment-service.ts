@@ -1,11 +1,15 @@
+import { Prisma } from "@prisma/client";
+
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { ProductRepository } from "@/domains/products/repositories/product-repository";
 import { WarehouseRepository } from "@/domains/warehouses/repositories/warehouse-repository";
+import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { AdjustmentReasonService } from "./adjustment-reason-service";
+import { CostingService } from "./costing-service";
 import { InventoryPostingService } from "./inventory-posting-service";
 import { StockBalanceService } from "./stock-balance-service";
 import type { InventoryAdjustmentInput } from "../validation/inventory-adjustment-schema";
@@ -16,6 +20,7 @@ export class InventoryAdjustmentService {
     private readonly warehouses = new WarehouseRepository(),
     private readonly reasons = new AdjustmentReasonService(),
     private readonly posting = new InventoryPostingService(),
+    private readonly costing = new CostingService(),
     private readonly balances = new StockBalanceService(),
     private readonly documents = new DocumentNumberService(),
     private readonly activityLogs = new ActivityLogRepository(),
@@ -57,32 +62,77 @@ export class InventoryAdjustmentService {
     });
 
     const movementType = this.getMovementType(input.direction, reason.code);
-    const transaction = await this.posting.post({
-      organizationId: context.organizationId,
-      type: movementType,
-      documentNumber,
-      occurredAt: now,
-      createdById: context.userId,
-      notes: input.notes,
-      lines: [
+    const transaction = await prisma.$transaction(async (tx) => {
+      const txn = await this.posting.post(
         {
-          productId: product.id,
-          unitOfMeasureId: product.unitOfMeasureId,
-          quantity: input.quantity,
-          fromWarehouseId: input.direction === "OUT" ? warehouse.id : null,
-          toWarehouseId: input.direction === "IN" ? warehouse.id : null,
-          adjustmentReasonId: reason.id,
+          organizationId: context.organizationId,
+          type: movementType,
+          documentNumber,
+          occurredAt: now,
+          createdById: context.userId,
           notes: input.notes,
-          ledgerEntries: [
+          lines: [
             {
-              warehouseId: warehouse.id,
-              movementType,
-              direction: input.direction,
+              productId: product.id,
+              unitOfMeasureId: product.unitOfMeasureId,
               quantity: input.quantity,
+              fromWarehouseId: input.direction === "OUT" ? warehouse.id : null,
+              toWarehouseId: input.direction === "IN" ? warehouse.id : null,
+              adjustmentReasonId: reason.id,
+              notes: input.notes,
+              ledgerEntries: [
+                {
+                  warehouseId: warehouse.id,
+                  movementType,
+                  direction: input.direction,
+                  quantity: input.quantity,
+                },
+              ],
             },
           ],
         },
-      ],
+        tx,
+      );
+
+      if (txn) {
+        const invLine = txn.lines[0];
+        if (invLine) {
+          for (const entry of invLine.ledgerEntries) {
+            if (input.direction === "OUT") {
+              await this.costing.recordIssue(
+                {
+                  organizationId: context.organizationId,
+                  productId: product.id,
+                  warehouseId: warehouse.id,
+                  quantity: new Prisma.Decimal(Number(input.quantity)),
+                  ledgerEntryId: entry.id,
+                },
+                tx,
+              );
+            } else {
+              const avgCost = (await this.costing.getAverageCost(
+                context.organizationId,
+                product.id,
+                warehouse.id,
+              )) ?? new Prisma.Decimal(0);
+
+              await this.costing.recordReceipt(
+                {
+                  organizationId: context.organizationId,
+                  productId: product.id,
+                  warehouseId: warehouse.id,
+                  quantity: new Prisma.Decimal(Number(input.quantity)),
+                  unitCost: avgCost,
+                  ledgerEntryId: entry.id,
+                },
+                tx,
+              );
+            }
+          }
+        }
+      }
+
+      return txn;
     });
 
     await this.activityLogs.create({

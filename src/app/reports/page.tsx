@@ -16,6 +16,8 @@ import {
   PackageMinus,
   PiggyBank,
   Receipt,
+  ScrollText,
+  Search,
   ShoppingCart,
   Star,
   StopCircle,
@@ -79,6 +81,8 @@ const categories: ReportCategory[] = [
       { title: "Negative Stock", description: "Stock discrepancies where on-hand is below zero", icon: <PackageMinus className="size-5" />, href: "/reports/inventory/negative-stock" },
       { title: "Reserved Stock", description: "Inventory allocated to open orders", icon: <ClipboardList className="size-5" />, href: "/reports/inventory/reserved-stock" },
       { title: "Cycle Count History", description: "Physical count records and adjustment logs", icon: <FileText className="size-5" />, href: "/reports/inventory/cycle-count-history" },
+      { title: "Product Cost History", description: "Every cost-affecting event for a product in a warehouse", icon: <ScrollText className="size-5" />, href: "/reports/inventory/product-cost-history" },
+      { title: "Product Cost Card", description: "Full cost audit trail with running average for a product", icon: <Search className="size-5" />, href: "/reports/inventory/cost-card" },
     ],
   },
   {
@@ -90,6 +94,8 @@ const categories: ReportCategory[] = [
       { title: "Invoice Register", description: "Complete list of issued sales invoices", icon: <FileText className="size-5" />, href: "/reports/financial/invoice-register" },
       { title: "Payment Register", description: "Record of all payments received from customers", icon: <DollarSign className="size-5" />, href: "/reports/financial/payment-register" },
       { title: "Cash Collection", description: "Cash inflow tracking from customer payments", icon: <PiggyBank className="size-5" />, href: "/reports/financial/cash-collection" },
+      { title: "Cost of Goods Sold", description: "Outbound inventory movements with cost details", icon: <TrendingUp className="size-5" />, href: "/reports/financial/cogs" },
+      { title: "Gross Profit", description: "Per-invoice revenue vs COGS with calculated margin", icon: <LineChart className="size-5" />, href: "/reports/financial/gross-profit" },
     ],
   },
   {

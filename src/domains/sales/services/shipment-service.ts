@@ -1,5 +1,8 @@
+import { Prisma } from "@prisma/client";
+
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
+import { CostingService } from "@/domains/inventory/services/costing-service";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
 import { StockBalanceService } from "@/domains/inventory/services/stock-balance-service";
 import { ProductRepository } from "@/domains/products/repositories/product-repository";
@@ -19,6 +22,7 @@ export class ShipmentService {
     private readonly products = new ProductRepository(),
     private readonly warehouses = new WarehouseRepository(),
     private readonly posting = new InventoryPostingService(),
+    private readonly costing = new CostingService(),
     private readonly balances = new StockBalanceService(),
     private readonly documents = new DocumentNumberService(),
     private readonly activityLogs = new ActivityLogRepository(),
@@ -281,7 +285,7 @@ export class ShipmentService {
         };
       });
 
-      await this.posting.post(
+      const transaction = await this.posting.post(
         {
           organizationId: context.organizationId,
           type: "SALE",
@@ -295,6 +299,29 @@ export class ShipmentService {
         },
         tx,
       );
+
+      if (transaction) {
+        for (let i = 0; i < shipment.lines.length; i++) {
+          const shipLine = shipment.lines[i];
+          const invLine = transaction.lines[i];
+          if (!invLine) continue;
+
+          for (const entry of invLine.ledgerEntries) {
+            if (entry.direction !== "OUT") continue;
+
+            await this.costing.recordIssue(
+              {
+                organizationId: context.organizationId,
+                productId: shipLine.productId,
+                warehouseId: shipment.warehouseId,
+                quantity: new Prisma.Decimal(Number(shipLine.quantity)),
+                ledgerEntryId: entry.id,
+              },
+              tx,
+            );
+          }
+        }
+      }
 
       await tx.shipment.updateMany({
         where: { id, organizationId: context.organizationId },
