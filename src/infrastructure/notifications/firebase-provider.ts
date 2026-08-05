@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getMessaging, type Message } from "firebase-admin/messaging";
+import { readFileSync } from "fs";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { PushNotificationProvider, PushPayload, PushResult } from "./push-notification-provider";
 
@@ -9,8 +10,7 @@ function getPrivateKey(): string {
   const path = process.env.FIREBASE_ADMIN_KEY_PATH;
   if (path) {
     try {
-      const fs = require("fs") as typeof import("fs");
-      const json = JSON.parse(fs.readFileSync(path, "utf-8"));
+      const json = JSON.parse(readFileSync(path, "utf-8"));
       return json.private_key;
     } catch {
       throw new Error("FIREBASE_ADMIN_PRIVATE_KEY not set and FIREBASE_ADMIN_KEY_PATH could not be read");
@@ -25,8 +25,7 @@ function getClientEmail(): string {
   const path = process.env.FIREBASE_ADMIN_KEY_PATH;
   if (path) {
     try {
-      const fs = require("fs") as typeof import("fs");
-      const json = JSON.parse(fs.readFileSync(path, "utf-8"));
+      const json = JSON.parse(readFileSync(path, "utf-8"));
       return json.client_email;
     } catch {
       throw new Error("FIREBASE_ADMIN_CLIENT_EMAIL not set and FIREBASE_ADMIN_KEY_PATH could not be read");
@@ -41,8 +40,7 @@ function getProjectId(): string {
   const path = process.env.FIREBASE_ADMIN_KEY_PATH;
   if (path) {
     try {
-      const fs = require("fs") as typeof import("fs");
-      const json = JSON.parse(fs.readFileSync(path, "utf-8"));
+      const json = JSON.parse(readFileSync(path, "utf-8"));
       return json.project_id;
     } catch {
       throw new Error("FIREBASE_ADMIN_PROJECT_ID not set and FIREBASE_ADMIN_KEY_PATH could not be read");
@@ -70,9 +68,17 @@ export class FirebaseProvider implements PushNotificationProvider {
       select: { id: true, token: true },
     });
 
-    if (tokens.length === 0) return { success: true };
+    if (tokens.length === 0) {
+      console.info(`[push] No active device tokens for user ${userId} — push skipped, in-app only`);
+      return { success: true };
+    }
 
-    ensureApp();
+    try {
+      ensureApp();
+    } catch (err) {
+      console.error(`[push] FCM credential initialization failed (user=${userId}):`, (err as Error).message);
+      throw err;
+    }
 
     const baseMessage: Omit<Message, "token"> = {
       notification: { title, body: body ?? undefined },
@@ -98,14 +104,21 @@ export class FirebaseProvider implements PushNotificationProvider {
         lastResult = { success: true, token: t.token };
       } catch (err: unknown) {
         const fbErr = err as { code?: string; message?: string };
-        if (fbErr.code === "messaging/registration-token-not-registered" || fbErr.code === "messaging/invalid-argument") {
+        const code = fbErr.code ?? "unknown";
+        if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-argument") {
+          console.warn(`[push] Deactivating stale device token ${t.id} (${code})`);
           await prisma.deviceToken.update({
             where: { id: t.id },
             data: { isActive: false },
           });
-          lastResult = { success: false, token: t.token, error: fbErr.code };
+          lastResult = { success: false, token: t.token, error: code };
         } else {
-          lastResult = { success: false, token: t.token, error: fbErr.message ?? "unknown error" };
+          const isAuthError =
+            code === "messaging/authentication-error" || code === "app/invalid-credential" || code.includes("auth") || code.includes("credential");
+          console.error(
+            `[push] FCM send failed (user=${userId}, token=${t.id}, code=${code}, authError=${isAuthError}): ${fbErr.message ?? "unknown error"}`,
+          );
+          lastResult = { success: false, token: t.token, error: fbErr.message ?? code };
         }
       }
     }

@@ -8,6 +8,7 @@ import { ReportFilters as FilterBar } from "./report-filters";
 import { ReportTable } from "./report-table";
 import { ExportButton } from "./export-button";
 import { PrintButton } from "./print-button";
+import type { WholesaleTermKey } from "@/lib/wholesale-terms";
 
 type Props = {
   title: string;
@@ -18,6 +19,7 @@ type Props = {
   showCustomer?: boolean;
   showSupplier?: boolean;
   showSearch?: boolean;
+  titleTerm?: WholesaleTermKey;
 };
 
 function toReportFilters(fv: FilterValues): ReportFilters {
@@ -35,7 +37,7 @@ function toReportFilters(fv: FilterValues): ReportFilters {
 
 export function ReportPageContent({
   title, description, columns, fetcher,
-  showWarehouse, showCustomer, showSupplier, showSearch,
+  showWarehouse, showCustomer, showSupplier, showSearch, titleTerm,
 }: Props) {
   const [data, setData] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +62,7 @@ export function ReportPageContent({
     <ReportLayout
       title={title}
       description={description}
+      titleTerm={titleTerm}
       actions={
         <div className="no-print flex gap-2">
           <ExportButton data={data} columns={columns} filename={title.toLowerCase().replace(/\s+/g, "-")} />

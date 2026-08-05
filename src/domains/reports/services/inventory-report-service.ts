@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { InventoryValuationService, type InventoryValuationRow } from "@/domains/inventory/services/inventory-valuation-service";
 import { BaseReportRepository, type ReportDateRange } from "../repositories/base-report-repository";
 
 type InventoryFilters = {
@@ -22,14 +23,7 @@ type CurrentStockRow = {
   unitCost: number | null;
 };
 
-type ValuationRow = {
-  productId: string;
-  productName: string;
-  productSku: string;
-  onHand: number;
-  unitCost: number;
-  totalValue: number;
-};
+type ValuationRow = InventoryValuationRow;
 
 type StockMovementRow = {
   movementType: string;
@@ -253,35 +247,10 @@ export class InventoryReportService extends BaseReportRepository {
 
   async valuation(filters: InventoryFilters): Promise<ValuationRow[]> {
     const organizationId = await this.resolveOrganizationId();
-    const whId = filters.warehouseId;
-
-    const costs = await prisma.productCost.findMany({
-      where: {
-        organizationId,
-        totalQuantity: { gt: 0 },
-        ...(whId && { warehouseId: whId }),
-        ...(filters.search && {
-          product: {
-            OR: [
-              { name: { contains: filters.search, mode: "insensitive" } },
-              { sku: { contains: filters.search, mode: "insensitive" } },
-            ],
-          },
-        }),
-      },
-      include: { product: true, warehouse: true },
-      orderBy: { averageCost: "desc" },
+    return new InventoryValuationService().valuation(organizationId, {
+      warehouseId: filters.warehouseId,
+      search: filters.search,
     });
-
-    return costs.map((c) => ({
-      productId: c.productId,
-      productName: c.product.name,
-      productSku: c.product.sku,
-      warehouseName: c.warehouse.name,
-      onHand: this.toNumber(c.totalQuantity),
-      unitCost: this.toNumber(c.averageCost),
-      totalValue: this.toNumber(c.totalValue),
-    }));
   }
 
   async stockMovement(filters: InventoryFilters): Promise<StockMovementRow[]> {

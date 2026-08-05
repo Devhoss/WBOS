@@ -17,7 +17,7 @@ export function DocumentTimeline({ entries }: { entries: TimelineEntry[] }) {
         <div className="space-y-4">
           {entries.map((entry, i) => {
             const time = new Date(entry.createdAt);
-            const actionKey = entry.action.replace(/PURCHASE_ORDER_|SALES_ORDER_|INVOICE_|SHIPMENT_/, "");
+            const actionKey = entry.action.replace(/PURCHASE_ORDER_|SALES_ORDER_|INVOICE_|SHIPMENT_|LANDED_COST_/, "");
 
             return (
               <div key={i} className="relative">

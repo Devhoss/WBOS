@@ -1,4 +1,6 @@
 import { prisma } from "@/infrastructure/database/prisma";
+import { InventoryValuationService } from "@/domains/inventory/services/inventory-valuation-service";
+import { StockBalanceService } from "@/domains/inventory/services/stock-balance-service";
 import { type KpiCard } from "../dto/report-types";
 import { BaseReportRepository } from "../repositories/base-report-repository";
 
@@ -74,40 +76,12 @@ export class KpiService extends BaseReportRepository {
   async inventoryValue(): Promise<KpiCard> {
     const organizationId = await this.resolveOrganizationId();
 
-    const entries = await prisma.inventoryLedgerEntry.groupBy({
-      by: ["productId", "warehouseId", "direction"],
-      where: { organizationId },
-      _sum: { quantity: true },
-    });
-
-    const productIds = [...new Set(entries.map((e) => e.productId))];
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, defaultSellingPrice: true },
-    });
-
-    const priceMap = new Map(products.map((p) => [p.id, this.toNumber(p.defaultSellingPrice)]));
-    const balanceMap = new Map<string, number>();
-
-    for (const entry of entries) {
-      const key = `${entry.productId}:${entry.warehouseId}`;
-      const qty = this.toNumber(entry._sum.quantity);
-      const current = balanceMap.get(key) ?? 0;
-      balanceMap.set(key, entry.direction === "IN" ? current + qty : current - qty);
-    }
-
-    let totalValue = 0;
-    for (const [key, qty] of balanceMap) {
-      if (qty <= 0) continue;
-      const productId = key.split(":")[0];
-      const price = priceMap.get(productId) ?? 0;
-      totalValue += qty * price;
-    }
+    const totalValue = await new InventoryValuationService().totalValue(organizationId);
 
     return {
       label: "Inventory Value",
       value: totalValue.toFixed(3),
-      subtitle: "Total stock value at selling price",
+      subtitle: "Total stock value at average cost",
     };
   }
 
@@ -148,25 +122,11 @@ export class KpiService extends BaseReportRepository {
   async lowStockItems(threshold = 10): Promise<KpiCard> {
     const organizationId = await this.resolveOrganizationId();
 
-    const entries = await prisma.inventoryLedgerEntry.groupBy({
-      by: ["productId", "warehouseId", "direction"],
-      where: { organizationId },
-      _sum: { quantity: true },
-    });
-
-    const balanceMap = new Map<string, number>();
-    for (const entry of entries) {
-      const key = `${entry.productId}:${entry.warehouseId}`;
-      const qty = this.toNumber(entry._sum.quantity);
-      const current = balanceMap.get(key) ?? 0;
-      balanceMap.set(key, entry.direction === "IN" ? current + qty : current - qty);
-    }
-
+    const balances = await new StockBalanceService().getStockBalancesDetail(organizationId);
     const productOnHand = new Map<string, number>();
-    for (const [key, qty] of balanceMap) {
-      const productId = key.split(":")[0];
-      const current = productOnHand.get(productId) ?? 0;
-      productOnHand.set(productId, current + qty);
+    for (const balance of balances) {
+      const current = productOnHand.get(balance.productId) ?? 0;
+      productOnHand.set(balance.productId, current + Number(balance.onHand));
     }
 
     const lowCount = Array.from(productOnHand.values()).filter((qty) => qty < threshold).length;

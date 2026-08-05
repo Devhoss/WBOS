@@ -31,9 +31,16 @@ export class NotificationService {
     if (this.pushProvider) {
       this.pushProvider
         .send(input.userId, input.title, input.body, toPayload(input.type, input.link))
-        .catch(() => {
-          /* FCM failure is non-critical */
+        .then((result) => {
+          if (!result.success) {
+            console.warn(`[push] Send failed (user=${input.userId}): ${result.error ?? "no error detail"}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`[push] Provider threw (user=${input.userId}):`, err);
         });
+    } else {
+      console.warn(`[push] No push provider selected (user=${input.userId}) — in-app only`);
     }
 
     return notification;

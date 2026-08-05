@@ -125,6 +125,50 @@ export class CostingService {
     return cost?.averageCost ?? null;
   }
 
+  async recordRevaluation(
+    input: {
+      organizationId: string;
+      productId: string;
+      warehouseId: string;
+      value: Prisma.Decimal;
+      ledgerEntryId: string;
+    },
+    tx: PrismaTx,
+  ): Promise<{ unitCost: Prisma.Decimal; totalCost: Prisma.Decimal }> {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const current = await this.getCost(input.organizationId, input.productId, input.warehouseId, tx);
+
+      if (!current || current.totalQuantity.isZero()) {
+        throw new BusinessError(
+          "Cannot revalue a product with no on-hand quantity.",
+          "COST_REVALUATION_ZERO_QUANTITY",
+        );
+      }
+
+      const newValue = current.totalValue.add(input.value);
+      const newAverage = newValue.div(current.totalQuantity);
+
+      const result = await tx.productCost.updateMany({
+        where: { id: current.id, updatedAt: current.updatedAt },
+        data: { averageCost: newAverage, totalValue: newValue },
+      });
+
+      if (result.count > 0) {
+        await this.setLedgerCost(input.ledgerEntryId, newAverage, input.value.abs(), tx);
+        return { unitCost: newAverage, totalCost: input.value };
+      }
+
+      if (attempt === MAX_RETRIES - 1) {
+        throw new BusinessError(
+          "Cost record was modified concurrently. Please retry.",
+          "COST_CONCURRENCY_CONFLICT",
+        );
+      }
+    }
+
+    throw new BusinessError("Unexpected error in recordRevaluation.", "UNEXPECTED_ERROR");
+  }
+
   private async setLedgerCost(ledgerEntryId: string, unitCost: Prisma.Decimal, totalCost: Prisma.Decimal, tx: PrismaTx) {
     await tx.inventoryLedgerEntry.update({
       where: { id: ledgerEntryId },

@@ -165,4 +165,98 @@ describe("InventoryPostingService.post() — cost field passthrough", () => {
       }),
     ).rejects.toThrow("Inventory quantity must be greater than zero");
   });
+
+  it("rejects zero quantity for non-LANDED_COST movement types", async () => {
+    mockTx.inventoryTransaction.findFirst.mockResolvedValue({ id: "txn-5" });
+
+    await expect(
+      service.post({
+        ...validInput,
+        lines: [
+          {
+            ...validInput.lines[0],
+            quantity: new Prisma.Decimal(0),
+            ledgerEntries: [
+              {
+                ...validInput.lines[0].ledgerEntries[0],
+                quantity: new Prisma.Decimal(0),
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Inventory quantity must be greater than zero");
+  });
+
+  it("allows zero line quantity for LANDED_COST transactions", async () => {
+    mockTx.inventoryTransaction.findFirst.mockResolvedValue({ id: "txn-6" });
+
+    await expect(
+      service.post({
+        ...validInput,
+        type: "LANDED_COST" as const,
+        lines: [
+          {
+            ...validInput.lines[0],
+            quantity: new Prisma.Decimal(0),
+            ledgerEntries: [
+              {
+                ...validInput.lines[0].ledgerEntries[0],
+                movementType: "LANDED_COST" as const,
+                quantity: new Prisma.Decimal(0),
+              },
+            ],
+          },
+        ],
+      }),
+    ).resolves.toEqual({ id: "txn-6" });
+  });
+
+  it("allows zero entry quantity only when the entry movement type is LANDED_COST", async () => {
+    mockTx.inventoryTransaction.findFirst.mockResolvedValue({ id: "txn-7" });
+
+    await expect(
+      service.post({
+        ...validInput,
+        type: "LANDED_COST" as const,
+        lines: [
+          {
+            ...validInput.lines[0],
+            quantity: new Prisma.Decimal(0),
+            ledgerEntries: [
+              {
+                ...validInput.lines[0].ledgerEntries[0],
+                movementType: "PURCHASE_RECEIPT" as const,
+                quantity: new Prisma.Decimal(0),
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Inventory quantity must be greater than zero");
+  });
+
+  it("rejects negative quantity for LANDED_COST transactions", async () => {
+    mockTx.inventoryTransaction.findFirst.mockResolvedValue({ id: "txn-8" });
+
+    await expect(
+      service.post({
+        ...validInput,
+        type: "LANDED_COST" as const,
+        lines: [
+          {
+            ...validInput.lines[0],
+            quantity: new Prisma.Decimal(-1),
+            ledgerEntries: [
+              {
+                ...validInput.lines[0].ledgerEntries[0],
+                movementType: "LANDED_COST" as const,
+                quantity: new Prisma.Decimal(-1),
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Inventory quantity must not be negative");
+  });
 });

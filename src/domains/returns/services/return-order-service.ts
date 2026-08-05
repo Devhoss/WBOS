@@ -4,6 +4,7 @@ import { BusinessError } from "@/shared/errors/business-error";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { ReturnOrderRepository } from "../repositories/return-order-repository";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
+import { CostingService } from "@/domains/inventory/services/costing-service";
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { CreditNoteService } from "@/domains/credit-notes/services/credit-note-service";
 import type { CreateReturnOrderInput, CompleteReturnInput } from "../validation/return-order-schema";
@@ -13,6 +14,7 @@ export class ReturnOrderService {
   private docs = new DocumentNumberService();
   private logs = new ActivityLogRepository();
   private inventory = new InventoryPostingService();
+  private costing = new CostingService();
   private creditNotes = new CreditNoteService();
 
   async create(context: { organizationId: string; userId: string }, input: CreateReturnOrderInput) {
@@ -162,6 +164,76 @@ export class ReturnOrderService {
     }
   }
 
+  /**
+   * Resolve the unit cost used to restock a returned line.
+   *
+   * A customer return reverses a specific outbound issue, so the reversal is
+   * costed at the original issue cost recorded on the delivered shipment's
+   * SALE/OUT ledger entries (LIFO-weighted across issues until the received
+   * quantity is consumed). When the original issue cost cannot be determined
+   * (no delivered shipment, no recorded unit cost), it falls back to the
+   * product's current weighted average cost.
+   */
+  private async resolveRestockUnitCost(
+    organizationId: string,
+    returnOrder: { salesOrderId: string | null; invoiceId: string | null },
+    productId: string,
+    warehouseId: string,
+    quantity: Prisma.Decimal.Value,
+  ): Promise<Prisma.Decimal> {
+    const salesOrderId = returnOrder.salesOrderId
+      ?? (returnOrder.invoiceId
+        ? (await prisma.invoice.findFirst({
+            where: { id: returnOrder.invoiceId, organizationId },
+            select: { salesOrderId: true },
+          }))?.salesOrderId
+        : null);
+
+    if (salesOrderId) {
+      const shipments = await prisma.shipment.findMany({
+        where: { organizationId, salesOrderId, status: "DELIVERED" },
+        select: { id: true },
+      });
+
+      if (shipments.length > 0) {
+        const issues = await prisma.inventoryLedgerEntry.findMany({
+          where: {
+            organizationId,
+            productId,
+            warehouseId,
+            movementType: "SALE",
+            direction: "OUT",
+            transaction: { referenceType: "SHIPMENT", referenceId: { in: shipments.map((s) => s.id) } },
+            unitCost: { not: null },
+          },
+          orderBy: { occurredAt: "desc" },
+          select: { quantity: true, unitCost: true },
+        });
+
+        if (issues.length > 0) {
+          let remaining = new Prisma.Decimal(quantity);
+          let totalCost = new Prisma.Decimal(0);
+
+          for (const issue of issues) {
+            if (remaining.lte(0)) break;
+
+            const issueQuantity = new Prisma.Decimal(Number(issue.quantity));
+            const take = remaining.lt(issueQuantity) ? remaining : issueQuantity;
+            totalCost = totalCost.add(take.mul(new Prisma.Decimal(Number(issue.unitCost))));
+            remaining = remaining.sub(take);
+          }
+
+          if (remaining.lte(0)) {
+            return totalCost.div(new Prisma.Decimal(quantity));
+          }
+        }
+      }
+    }
+
+    const average = await this.costing.getAverageCost(organizationId, productId, warehouseId);
+    return average ?? new Prisma.Decimal(0);
+  }
+
   async receive(
     context: { organizationId: string; userId: string },
     id: string,
@@ -260,26 +332,63 @@ export class ReturnOrderService {
       });
 
       if (line.disposition === "RESTOCK") {
-        await this.inventory.post({
-          organizationId: context.organizationId,
-          type: "CUSTOMER_RETURN",
-          referenceType: "ReturnOrder",
-          referenceId: input.id,
-          occurredAt: now,
-          createdById: context.userId,
-          notes: `Restock from return ${returnOrder.returnNumber}`,
-          lines: [{
-            productId: orderLine.productId,
-            unitOfMeasureId: orderLine.unitOfMeasureId,
-            quantity: orderLine.receivedQuantity,
-            toWarehouseId: input.warehouseId,
-            ledgerEntries: [{
-              warehouseId: input.warehouseId,
-              movementType: "CUSTOMER_RETURN",
-              direction: "IN",
-              quantity: orderLine.receivedQuantity,
-            }],
-          }],
+        const restockUnitCost = await this.resolveRestockUnitCost(
+          context.organizationId,
+          returnOrder,
+          orderLine.productId,
+          input.warehouseId,
+          orderLine.receivedQuantity,
+        );
+
+        await prisma.$transaction(async (tx) => {
+          const transaction = await this.inventory.post(
+            {
+              organizationId: context.organizationId,
+              type: "CUSTOMER_RETURN",
+              referenceType: "ReturnOrder",
+              referenceId: input.id,
+              occurredAt: now,
+              createdById: context.userId,
+              notes: `Restock from return ${returnOrder.returnNumber}`,
+              lines: [{
+                productId: orderLine.productId,
+                unitOfMeasureId: orderLine.unitOfMeasureId,
+                quantity: orderLine.receivedQuantity,
+                unitCost: restockUnitCost,
+                totalCost: new Prisma.Decimal(Number(orderLine.receivedQuantity)).mul(restockUnitCost),
+                toWarehouseId: input.warehouseId,
+                ledgerEntries: [{
+                  warehouseId: input.warehouseId,
+                  movementType: "CUSTOMER_RETURN",
+                  direction: "IN",
+                  quantity: orderLine.receivedQuantity,
+                  unitCost: restockUnitCost,
+                  totalCost: new Prisma.Decimal(Number(orderLine.receivedQuantity)).mul(restockUnitCost),
+                }],
+              }],
+            },
+            tx,
+          );
+
+          if (transaction) {
+            for (const invLine of transaction.lines) {
+              for (const entry of invLine.ledgerEntries) {
+                if (entry.direction !== "IN") continue;
+
+                await this.costing.recordReceipt(
+                  {
+                    organizationId: context.organizationId,
+                    productId: orderLine.productId,
+                    warehouseId: entry.warehouseId,
+                    quantity: new Prisma.Decimal(Number(entry.quantity)),
+                    unitCost: restockUnitCost,
+                    ledgerEntryId: entry.id,
+                  },
+                  tx,
+                );
+              }
+            }
+          }
         });
 
         await this.logs.create({

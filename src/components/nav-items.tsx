@@ -2,7 +2,7 @@
 
 import {
   BadgePercent, BarChart3, Boxes, ClipboardList, CreditCard, FileText,
-  Home, ListChecks, Package, ReceiptText, RotateCcw, Settings, ShoppingCart, Tags, Truck, Users, Warehouse,
+  Home, ListChecks, Package, ReceiptText, RotateCcw, Settings, ShoppingCart, Ship, Tags, Truck, Users, Warehouse,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -14,6 +14,8 @@ const navigation = [
   { name: "Inventory", href: "/inventory", icon: Boxes },
   { name: "Purchasing", href: "/purchasing", icon: ShoppingCart },
   { name: "Suppliers", href: "/suppliers", icon: Truck },
+  { name: "Supplier Invoices", href: "/purchasing/supplier-invoices", icon: ReceiptText },
+  { name: "Import Shipments", href: "/purchasing/import-shipments", icon: Ship },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Tasks", href: "/tasks", icon: ListChecks },
   { name: "Quotations", href: "/quotations", icon: FileText },
@@ -33,7 +35,12 @@ export function NavItems({ collapsed }: { collapsed?: boolean }) {
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+    const matches = navigation
+      .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+      .map((item) => item.href);
+    if (matches.length === 0) return false;
+    const mostSpecific = matches.reduce((a, b) => (b.length > a.length ? b : a));
+    return mostSpecific === href;
   }
 
   return (

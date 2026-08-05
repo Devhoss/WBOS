@@ -304,7 +304,7 @@ Transform operational data into business intelligence.
 * Customer reports
 * Supplier reports
 * Profit analysis ✓ (Gross Profit, COGS reports)
-* Inventory valuation ✓ (now uses actual average cost)
+* Inventory valuation ✓ (single shared source: `InventoryValuationService` drives the valuation report, dashboard Inventory Value card, and KPI card — verified equal after receipts, sales, transfers, adjustments, and landed-cost post/cancel)
 * Cost audit trail ✓ (Product Cost History, Cost Card)
 * Aging reports
 * Global search

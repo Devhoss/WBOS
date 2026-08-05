@@ -26,3 +26,12 @@ export function requireMinimumRole(
     throw new BusinessError("You do not have permission to perform this action.", "FORBIDDEN");
   }
 }
+
+export function requireAnyRole(
+  context: AuthenticatedRequestContext,
+  allowedRoles: readonly OrganizationRole[],
+) {
+  if (!allowedRoles.includes(context.role)) {
+    throw new BusinessError("You do not have permission to perform this action.", "FORBIDDEN");
+  }
+}

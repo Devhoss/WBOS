@@ -24,6 +24,7 @@ export default function Page() {
         showCustomer={false}
         showSupplier={false}
         showSearch={true}
+        titleTerm="weightedAverageCost"
       />
     </AppShell>
   );

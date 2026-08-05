@@ -1,5 +1,5 @@
 import { t, type DocTableColumn } from "@/components/document-engine";
-import type { SectionProps } from "./types";
+import type { InvoiceLine, SectionProps } from "./types";
 
 export function InvoiceItemsTable({ invoice, language }: SectionProps) {
   const columns: DocTableColumn[] = [
@@ -21,7 +21,7 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
         <div>
           <div style={{ fontWeight: 600, color: "#1f2937" }}>
             {language === "arabic" ? (String(row.productArabicName ?? row.productName)) : String(row.productName)}
-            {(row as any).lineType === "FREE_SAMPLE" ? (
+            {(row as InvoiceLine).lineType === "FREE_SAMPLE" ? (
               <span style={{
                 marginLeft: "6px",
                 fontSize: "8px",

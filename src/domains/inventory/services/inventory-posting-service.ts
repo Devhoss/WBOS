@@ -107,20 +107,28 @@ export class InventoryPostingService {
     }
 
     for (const line of input.lines) {
-      this.validatePositiveQuantity(line.quantity);
+      this.validateQuantity(line.quantity, input.type);
 
       if (line.ledgerEntries.length === 0) {
         throw new BusinessError("Inventory transaction line must create ledger entries.", "INVENTORY_LINE_WITHOUT_LEDGER");
       }
 
       for (const entry of line.ledgerEntries) {
-        this.validatePositiveQuantity(entry.quantity);
+        this.validateQuantity(entry.quantity, entry.movementType);
       }
     }
   }
 
-  private validatePositiveQuantity(quantity: Prisma.Decimal.Value) {
+  private validateQuantity(quantity: Prisma.Decimal.Value, movementType: InventoryMovementType) {
     const decimal = new Prisma.Decimal(quantity);
+
+    if (movementType === "LANDED_COST") {
+      if (decimal.lt(0)) {
+        throw new BusinessError("Inventory quantity must not be negative.", "INVENTORY_INVALID_QUANTITY");
+      }
+
+      return;
+    }
 
     if (decimal.lte(0)) {
       throw new BusinessError("Inventory quantity must be greater than zero.", "INVENTORY_INVALID_QUANTITY");

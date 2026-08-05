@@ -26,6 +26,7 @@ export default function Page() {
         showCustomer={false}
         showSupplier={false}
         showSearch={false}
+        titleTerm="grossMargin"
       />
     </AppShell>
   );

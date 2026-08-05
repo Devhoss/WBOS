@@ -31,13 +31,16 @@ import {
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
+import { HelpTooltip } from "@/components/help-tooltip";
 import { cn } from "@/lib/utils";
+import type { WholesaleTermKey } from "@/lib/wholesale-terms";
 
 type ReportLink = {
   title: string;
   description: string;
   icon: React.ReactNode;
   href: string;
+  term?: WholesaleTermKey;
 };
 
 type ReportCategory = {
@@ -73,7 +76,7 @@ const categories: ReportCategory[] = [
     title: "Inventory",
     reports: [
       { title: "Current Stock", description: "Real-time stock levels across all warehouses", icon: <Box className="size-5" />, href: "/reports/inventory/current-stock" },
-      { title: "Inventory Valuation", description: "Stock value calculated by cost method", icon: <DollarSign className="size-5" />, href: "/reports/inventory/valuation" },
+      { title: "Inventory Valuation", description: "Stock value calculated by cost method", icon: <DollarSign className="size-5" />, href: "/reports/inventory/valuation", term: "weightedAverageCost" },
       { title: "Stock Movement", description: "Inbound and outbound transaction history", icon: <ArrowUpDown className="size-5" />, href: "/reports/inventory/stock-movement" },
       { title: "Inventory Aging", description: "Stock categorized by days in warehouse", icon: <Clock className="size-5" />, href: "/reports/inventory/aging" },
       { title: "Slow Moving", description: "Products with low turnover rates", icon: <StopCircle className="size-5" />, href: "/reports/inventory/slow-moving" },
@@ -95,7 +98,7 @@ const categories: ReportCategory[] = [
       { title: "Payment Register", description: "Record of all payments received from customers", icon: <DollarSign className="size-5" />, href: "/reports/financial/payment-register" },
       { title: "Cash Collection", description: "Cash inflow tracking from customer payments", icon: <PiggyBank className="size-5" />, href: "/reports/financial/cash-collection" },
       { title: "Cost of Goods Sold", description: "Outbound inventory movements with cost details", icon: <TrendingUp className="size-5" />, href: "/reports/financial/cogs" },
-      { title: "Gross Profit", description: "Per-invoice revenue vs COGS with calculated margin", icon: <LineChart className="size-5" />, href: "/reports/financial/gross-profit" },
+      { title: "Gross Profit", description: "Per-invoice revenue vs COGS with calculated margin", icon: <LineChart className="size-5" />, href: "/reports/financial/gross-profit", term: "grossProfit" },
     ],
   },
   {
@@ -103,7 +106,7 @@ const categories: ReportCategory[] = [
     reports: [
       { title: "Shipment Status", description: "Real-time tracking of outbound shipments", icon: <Truck className="size-5" />, href: "/reports/operational/shipment-status" },
       { title: "Delivery Performance", description: "On-time delivery metrics and carrier performance", icon: <Zap className="size-5" />, href: "/reports/operational/delivery-performance" },
-      { title: "Picking Performance", description: "Picker productivity and accuracy metrics", icon: <BarChart3 className="size-5" />, href: "/reports/operational/picking-performance" },
+      { title: "Picking Performance", description: "Picker productivity and accuracy metrics", icon: <BarChart3 className="size-5" />, href: "/reports/operational/picking-performance", term: "picking" },
       { title: "Barcode Activity", description: "Scan events and barcode usage logs", icon: <Barcode className="size-5" />, href: "/reports/operational/barcode-activity" },
       { title: "Warehouse Activity", description: "Overall operations summary per warehouse zone", icon: <Warehouse className="size-5" />, href: "/reports/operational/warehouse-activity" },
     ],
@@ -150,7 +153,10 @@ export default function ReportsPage() {
                     {report.icon}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium group-hover:text-primary">{report.title}</p>
+                    <p className="flex items-center gap-1 text-sm font-medium group-hover:text-primary">
+                      {report.title}
+                      {report.term ? <HelpTooltip term={report.term} /> : null}
+                    </p>
                     <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{report.description}</p>
                   </div>
                 </div>

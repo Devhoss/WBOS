@@ -12,8 +12,8 @@ export async function startTaskAction(taskId: string, updatedAt: string) {
   try {
     const task = await service.startTask(context, taskId, updatedAt);
     return { ok: true as const, task };
-  } catch (e: any) {
-    return { ok: false as const, message: e.message ?? "Failed to start task." };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Failed to start task." };
   }
 }
 
@@ -27,8 +27,8 @@ export async function completeTaskAction(taskId: string, updatedAt: string) {
       task.id,
     );
     return { ok: true as const, task };
-  } catch (e: any) {
-    return { ok: false as const, message: e.message ?? "Failed to complete task." };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Failed to complete task." };
   }
 }
 
@@ -37,8 +37,8 @@ export async function cancelTaskAction(taskId: string, reason: string | null, up
   try {
     const task = await service.cancelTask(context, taskId, reason, updatedAt);
     return { ok: true as const, task };
-  } catch (e: any) {
-    return { ok: false as const, message: e.message ?? "Failed to cancel task." };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Failed to cancel task." };
   }
 }
 
@@ -59,7 +59,7 @@ export async function createPickTaskAction(salesOrderId: string, assignedToId?: 
     const shipmentsRepo = new ShipmentRepository();
     const activeShipments = await shipmentsRepo.listWithFilters(context.organizationId, {
       salesOrderId,
-      status: "PENDING_PICK" as any,
+      status: "PENDING_PICK",
     });
     const shipments = activeShipments.data.filter((s) => s.status === "PENDING_PICK" || s.status === "PICKING");
 
@@ -70,7 +70,7 @@ export async function createPickTaskAction(salesOrderId: string, assignedToId?: 
     for (const shipment of shipments) {
       const detail = await shipmentsRepo.findById(context.organizationId, shipment.id);
       if (!detail) continue;
-      const task = await domain.createFromShipment(context, detail as any, assignedToId);
+      const task = await domain.createFromShipment(context, detail, assignedToId);
       tasks.push(task);
     }
 
@@ -88,7 +88,7 @@ export async function createPickTaskAction(salesOrderId: string, assignedToId?: 
     }
 
     return { ok: true as const, tasks };
-  } catch (e: any) {
-    return { ok: false as const, message: e.message ?? "Failed to create pick task." };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Failed to create pick task." };
   }
 }

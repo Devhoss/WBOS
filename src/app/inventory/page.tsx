@@ -3,16 +3,26 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/app-shell";
+import { HelpTooltip } from "@/components/help-tooltip";
+import type { WholesaleTermKey } from "@/lib/wholesale-terms";
 
 export const metadata: Metadata = { title: "Inventory" };
 
-const sections = [
+const sections: Array<{
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+  icon: typeof PlusCircle;
+  term?: WholesaleTermKey;
+}> = [
   {
     key: "receiving",
     title: "Manual Receiving",
     description: "Add stock into a warehouse. Generates a Goods Receipt Note (GRN).",
     href: "/inventory/receiving",
     icon: PlusCircle,
+    term: "goodsReceipt",
   },
   {
     key: "adjustments",
@@ -82,7 +92,10 @@ export default function InventoryOverviewPage() {
                   <section.icon className="size-5 text-muted-foreground group-hover:text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-sm font-semibold group-hover:text-primary">{section.title}</h2>
+                  <h2 className="flex items-center gap-1 text-sm font-semibold group-hover:text-primary">
+                    {section.title}
+                    {section.term ? <HelpTooltip term={section.term} /> : null}
+                  </h2>
                   <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
                 </div>
               </div>

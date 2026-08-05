@@ -13,6 +13,7 @@ function mockContext(overrides = {}) {
     organizationId: "org-1",
     userId: "user-1",
     role: "ADMIN",
+    user: { id: "user-1", name: "Test User" },
     ...overrides,
   } as never;
 }
@@ -203,9 +204,9 @@ describe("Customer Balance Service", () => {
   it("should calculate outstanding across multiple invoices", async () => {
     const mockFindMany = prisma.invoice.findMany as ReturnType<typeof vi.fn>;
     mockFindMany.mockResolvedValue([
-      { totalAmount: new Prisma.Decimal(100), amountPaid: new Prisma.Decimal(30) },
-      { totalAmount: new Prisma.Decimal(200), amountPaid: new Prisma.Decimal(0) },
-      { totalAmount: new Prisma.Decimal(150), amountPaid: new Prisma.Decimal(150) },
+      { totalAmount: new Prisma.Decimal(100), amountPaid: new Prisma.Decimal(30), creditedAmount: new Prisma.Decimal(0) },
+      { totalAmount: new Prisma.Decimal(200), amountPaid: new Prisma.Decimal(0), creditedAmount: new Prisma.Decimal(0) },
+      { totalAmount: new Prisma.Decimal(150), amountPaid: new Prisma.Decimal(150), creditedAmount: new Prisma.Decimal(0) },
     ]);
 
     const outstanding = await balanceService.getOutstanding("org-1", "cust-1");
@@ -225,7 +226,7 @@ describe("Customer Balance Service", () => {
   it("should return correct balance summary with paid and unpaid", async () => {
     const mockFindMany = prisma.invoice.findMany as ReturnType<typeof vi.fn>;
     mockFindMany.mockResolvedValue([
-      { totalAmount: new Prisma.Decimal(100), amountPaid: new Prisma.Decimal(30) },
+      { totalAmount: new Prisma.Decimal(100), amountPaid: new Prisma.Decimal(30), creditedAmount: new Prisma.Decimal(0) },
     ]);
 
     const summary = await balanceService.getBalanceSummary("org-1", "cust-1");
@@ -281,6 +282,9 @@ describe("Shipment Service", () => {
 
     const mockWarehouseFind = vi.fn().mockResolvedValue({ id: "wh-1", name: "Main", code: "WH1" });
     vi.spyOn(WarehouseRepository.prototype, "findActiveById").mockImplementation(mockWarehouseFind);
+
+    const mockExistingShipments = prisma.shipment.findMany as ReturnType<typeof vi.fn>;
+    mockExistingShipments.mockResolvedValue([]);
 
     const mockBalanceAssert = vi.fn().mockResolvedValue(undefined);
     vi.spyOn(StockBalanceService.prototype, "assertAvailable").mockImplementation(mockBalanceAssert);

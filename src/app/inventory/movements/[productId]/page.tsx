@@ -33,9 +33,14 @@ export default async function ProductStockCardPage(props: { params: Promise<{ pr
     notFound();
   }
 
-  let runningBalance = 0;
-  const rows = entries.map((entry) => {
-    runningBalance += entry.direction === "IN" ? Number(entry.quantity) : -Number(entry.quantity);
+  const rows = entries.map((entry, index) => {
+    const runningBalance = entries
+      .slice(0, index + 1)
+      .reduce(
+        (sum, e) =>
+          sum + (e.direction === "IN" ? Number(e.quantity) : -Number(e.quantity)),
+        0,
+      );
     return {
       id: entry.id,
       date: entry.occurredAt.toISOString(),

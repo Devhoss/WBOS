@@ -41,7 +41,7 @@ type CreateInvoiceInput = {
 };
 
 export class InvoiceRepository {
-  async create(organizationId: string, invoiceNumber: string, data: CreateInvoiceInput) {
+async create(organizationId: string, invoiceNumber: string, data: CreateInvoiceInput) {
     return prisma.invoice.create({
       data: {
         organizationId,
@@ -64,7 +64,25 @@ export class InvoiceRepository {
         deliveryStatus: data.deliveryStatus,
         notes: data.notes,
         issuedAt: new Date(),
-        lines: { create: data.lines as any },
+        lines: {
+          create: data.lines.map((l) => ({
+            organizationId,
+            salesOrderLineId: l.salesOrderLineId,
+            productId: l.productId,
+            unitOfMeasureId: l.unitOfMeasureId,
+            lineNumber: l.lineNumber,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            totalPrice: l.totalPrice,
+            lineType: l.lineType,
+            productName: l.productName,
+            productArabicName: l.productArabicName,
+            productSku: l.productSku,
+            unitOfMeasureCode: l.unitOfMeasureCode,
+            piecesPerBox: l.piecesPerBox,
+            description: l.description ?? null,
+          })),
+        },
       },
       include: {
         lines: { orderBy: { lineNumber: "asc" } },

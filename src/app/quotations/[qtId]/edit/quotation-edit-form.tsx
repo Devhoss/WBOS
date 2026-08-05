@@ -44,7 +44,7 @@ function calcTotal(q: string, p: string): string {
 export function QuotationEditForm({
   quotation, customers, products, unitsOfMeasure,
 }: {
-  quotation: { id: string; customerId: string; currency: string; subtotal: number; taxAmount: number; totalAmount: number; discountAmount: number; discountType: string | null; discountRate: number | null; validUntil: string | null; notes: string | null; terms: string | null; lines: { id: string; productId: string; unitOfMeasureId: string; lineNumber: number; quantity: number; unitPrice: number; totalPrice: number; productName: string; productSku: string; unitOfMeasureCode: string; description: string | null; notes: string | null; }[] };
+  quotation: { id: string; customerId: string; currency: string; subtotal: number; taxAmount: number; totalAmount: number; discountAmount: number; discountType: string | null; discountRate: number | null; validUntil: string | null; notes: string | null; terms: string | null; lines: { id: string; productId: string; unitOfMeasureId: string; lineNumber: number; quantity: number; unitPrice: number; totalPrice: number; productName: string; productSku: string; unitOfMeasureCode: string; productBarcode: string | null; piecesPerBox: number | null; description: string | null; notes: string | null; }[] };
   customers: CustomerOption[];
   products: ProductOption[];
   unitsOfMeasure: UnitOption[];
@@ -61,9 +61,9 @@ export function QuotationEditForm({
       totalPrice: String(l.totalPrice),
       productName: l.productName,
       productSku: l.productSku,
-      productBarcode: (l as any).productBarcode ?? "",
+      productBarcode: l.productBarcode ?? "",
       unitOfMeasureCode: l.unitOfMeasureCode,
-      piecesPerBox: (l as any).piecesPerBox != null ? String((l as any).piecesPerBox) : "",
+      piecesPerBox: l.piecesPerBox != null ? String(l.piecesPerBox) : "",
       description: l.description ?? "",
       notes: l.notes ?? "",
     })),

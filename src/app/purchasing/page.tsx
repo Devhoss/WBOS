@@ -1,12 +1,20 @@
-import { ClipboardList, PackagePlus, Truck, Warehouse } from "lucide-react";
+import { Boxes, ClipboardList, PackagePlus, ReceiptText, Ship, Truck, Warehouse } from "lucide-react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
 import { AppShell } from "@/components/app-shell";
+import { HelpTooltip } from "@/components/help-tooltip";
+import type { WholesaleTermKey } from "@/lib/wholesale-terms";
 
 export const metadata: Metadata = { title: "Purchasing" };
 
-const sections = [
+const sections: Array<{
+  title: string;
+  description: string;
+  href: string;
+  icon: typeof Boxes;
+  term?: WholesaleTermKey;
+}> = [
   {
     title: "Orders",
     description: "Create and manage purchase orders. Submit, approve, and track receipts.",
@@ -24,6 +32,26 @@ const sections = [
     description: "Receive goods against purchase orders. Partial and full receipts supported.",
     href: "/purchasing/receiving",
     icon: Warehouse,
+    term: "goodsReceipt",
+  },
+  {
+    title: "Landed Costs",
+    description: "Revalue received inventory for freight, customs, and other costs. Allocate and post.",
+    href: "/purchasing/landed-costs",
+    icon: Boxes,
+    term: "landedCost",
+  },
+  {
+    title: "Supplier Invoices",
+    description: "Record and pay supplier invoices for imported goods. Track deposits and final payments.",
+    href: "/purchasing/supplier-invoices",
+    icon: ReceiptText,
+  },
+  {
+    title: "Import Shipments",
+    description: "Manage an import from start to finish: linked purchase order, supplier invoice, documents, receiving, and landed costs.",
+    href: "/purchasing/import-shipments",
+    icon: Ship,
   },
   {
     title: "Suppliers",
@@ -57,7 +85,10 @@ export default function PurchasingOverviewPage() {
                   <section.icon className="size-5 text-muted-foreground group-hover:text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-sm font-semibold group-hover:text-primary">{section.title}</h2>
+                  <h2 className="flex items-center gap-1 text-sm font-semibold group-hover:text-primary">
+                    {section.title}
+                    {section.term ? <HelpTooltip term={section.term} /> : null}
+                  </h2>
                   <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
                 </div>
               </div>

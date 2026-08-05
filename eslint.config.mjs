@@ -1,14 +1,17 @@
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-});
-
-const eslintConfig = [
+export default defineConfig(
+  globalIgnores([".next/**", "node_modules/**", "next-env.d.ts"]),
+  ...nextVitals,
+  ...nextTypescript,
   {
-    ignores: [".next/**", "node_modules/**", "next-env.d.ts"],
+    settings: {
+      react: { version: "19.2.8" },
+    },
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+    },
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-];
-
-export default eslintConfig;
+);

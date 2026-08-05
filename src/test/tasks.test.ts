@@ -312,6 +312,7 @@ describe("TaskDomainService", () => {
 
       for (const scenario of scenarios) {
         vi.clearAllMocks();
+        vi.restoreAllMocks();
 
         const mockTask = createMockTask({ status: scenario.from });
         vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);

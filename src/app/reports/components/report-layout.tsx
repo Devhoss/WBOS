@@ -1,3 +1,5 @@
+import { HelpTooltip } from "@/components/help-tooltip";
+import type { WholesaleTermKey } from "@/lib/wholesale-terms";
 import { cn } from "@/lib/utils";
 
 type ReportLayoutProps = {
@@ -5,14 +7,18 @@ type ReportLayoutProps = {
   description?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  titleTerm?: WholesaleTermKey;
 };
 
-export function ReportLayout({ title, description, children, actions }: ReportLayoutProps) {
+export function ReportLayout({ title, description, children, actions, titleTerm }: ReportLayoutProps) {
   return (
     <div className="space-y-6">
       <div className={cn("flex flex-col gap-4", actions && "sm:flex-row sm:items-start sm:justify-between")}>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
+          <h1 className="flex items-center gap-1.5 text-2xl font-semibold tracking-normal">
+            {title}
+            {titleTerm ? <HelpTooltip term={titleTerm} /> : null}
+          </h1>
           {description ? (
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
           ) : null}

@@ -165,7 +165,7 @@ async function ensureCustomer(orgId: string) {
   return customer;
 }
 
-async function ensureInventory(orgId: string, warehouseId: string, products: any[]) {
+async function ensureInventory(orgId: string, warehouseId: string, products: { id: string; unitOfMeasureId: string }[]) {
   // Check if we already have stock for these products
   const existingLedger = await prisma.inventoryLedgerEntry.findFirst({
     where: { organizationId: orgId, warehouseId },
@@ -392,10 +392,10 @@ async function main() {
     console.log("\n\u2500\u2500 7. Task Repository Queries \u2500\u2500");
     const taskRepo = new TaskRepository();
     const listed = await taskRepo.findMany(org.id, { status: "ASSIGNED" });
-    check(listed.data.some((t: any) => t.id === taskId), "Found in findMany with ASSIGNED filter");
+    check(listed.data.some((t) => t.id === taskId), "Found in findMany with ASSIGNED filter");
 
     const byType = await taskRepo.findMany(org.id, { type: "PICK_ORDER" });
-    check(byType.data.some((t: any) => t.id === taskId), "Found in findMany with PICK_ORDER filter");
+    check(byType.data.some((t) => t.id === taskId), "Found in findMany with PICK_ORDER filter");
 
     const countActive = await taskRepo.countActiveByReference(org.id, "SALES_ORDER", soId!);
     check(countActive === 1, "countActiveByReference returns 1 (task is not yet started)");
@@ -492,22 +492,22 @@ async function main() {
     try {
       await taskDomain.complete(ctx, taskId, currentState.updatedAt);
       check(false, "Should reject complete on COMPLETED task");
-    } catch (e: any) {
-      check(e.message?.includes("IN_PROGRESS"), "Rejects complete on COMPLETED task");
+    } catch (e) {
+      check(e instanceof Error && e.message?.includes("IN_PROGRESS"), "Rejects complete on COMPLETED task");
     }
 
     try {
       await taskDomain.start(ctx, taskId, currentState.updatedAt);
       check(false, "Should reject start on COMPLETED task");
-    } catch (e: any) {
-      check(e.message?.includes("ASSIGNED"), "Rejects start on COMPLETED task");
+    } catch (e) {
+      check(e instanceof Error && e.message?.includes("ASSIGNED"), "Rejects start on COMPLETED task");
     }
 
     try {
       await taskDomain.cancel(ctx, taskId, "test", currentState.updatedAt);
       check(false, "Should reject cancel on COMPLETED task");
-    } catch (e: any) {
-      check(e.message?.includes("current state") || e.message?.includes("COMPLETED"), "Rejects cancel on COMPLETED task");
+    } catch (e) {
+      check(e instanceof Error && (e.message?.includes("current state") || e.message?.includes("COMPLETED")), "Rejects cancel on COMPLETED task");
     }
 
     // ── ─── ─── ─── ─── ─── ─── ─── ─── ─── ───

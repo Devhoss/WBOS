@@ -1,6 +1,6 @@
 import {
-  Activity, ArrowUpRight, BarChart3, DollarSign,
-  Package, ShoppingCart, Truck, Users,
+  Activity, ArrowUpRight, BarChart3, CalendarRange, Coins, DollarSign,
+  Package, ShoppingCart, TriangleAlert, Truck, Users,
 } from "lucide-react";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { OnboardingPanel } from "@/components/onboarding-panel";
 import { getCachedContext } from "@/infrastructure/request/authenticated-request-context";
 import { prisma } from "@/infrastructure/database/prisma";
+import { cn } from "@/lib/utils";
 
 import { DashboardService } from "./dashboard-service";
 import { TrendChart, TopItemsChart } from "./simple-bar-chart";
@@ -100,32 +101,89 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
 
   return (
     <>
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Package} label="Active Products" value={data.stats.activeProducts} href="/products" />
-        <StatCard icon={ShoppingCart} label="Open POs" value={data.stats.openPOs} href="/purchasing/orders" />
-        <StatCard icon={Truck} label="Pending Shipments" value={data.stats.pendingShipments} href="/sales/shipments" />
-        <StatCard icon={DollarSign} label="Outstanding" value={`${data.stats.totalUnpaid.toLocaleString()} ${currency}`} href="/invoices" />
+      <section className="space-y-3">
+        <SectionHeading>Operations</SectionHeading>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            icon={Package}
+            label="Active Products"
+            value={data.stats.activeProducts.toLocaleString()}
+            href="/products"
+          />
+          <KpiCard
+            icon={ShoppingCart}
+            label="Open Purchase Orders"
+            value={data.stats.openPOs.toLocaleString()}
+            href="/purchasing/orders"
+          />
+          <KpiCard
+            icon={Truck}
+            label="Pending Shipments"
+            value={data.stats.pendingShipments.toLocaleString()}
+            href="/sales/shipments"
+          />
+          <KpiCard
+            icon={TriangleAlert}
+            label="Low Stock Items"
+            value={data.kpis.lowStockItems.toLocaleString()}
+            href="/inventory/stock"
+          />
+        </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <KpiCard label="Today Sales" value={`${data.kpis.salesToday.toFixed(3)} ${currency}`} icon={BarChart3} />
-        <KpiCard label="This Month" value={`${data.kpis.salesThisMonth.toFixed(3)} ${currency}`} icon={BarChart3} />
-        <KpiCard label="Outstanding" value={`${data.kpis.outstandingReceivables.toFixed(3)} ${currency}`} icon={DollarSign} />
-        <KpiCard label="Inventory Value" value={`${data.kpis.inventoryValue.toFixed(3)} ${currency}`} icon={Package} />
-        <KpiCard label="Low Stock Items" value={data.kpis.lowStockItems.toString()} icon={Package} />
-        <KpiCard label="Overdue Customers" value={data.kpis.overdueCustomers.toString()} icon={Users} />
-        <Link href="/reports" className="group relative rounded-lg border bg-background p-5 transition hover:shadow-sm">
-          <div className="flex size-10 items-center justify-center rounded-md bg-muted">
-            <BarChart3 className="size-5 text-primary" />
-          </div>
-          <p className="mt-4 text-sm font-medium text-muted-foreground">
-            Reports &amp; Analytics <ArrowUpRight className="ml-1 inline size-3" />
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">View all reports</p>
-        </Link>
+      <section className="mt-6 space-y-3">
+        <SectionHeading>Financial</SectionHeading>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            icon={Coins}
+            label="Inventory Value"
+            value={money(data.kpis.inventoryValue, currency)}
+            href="/reports/inventory/valuation"
+            emphasis
+          />
+          <KpiCard
+            icon={DollarSign}
+            label="Outstanding Receivables"
+            value={money(data.kpis.outstandingReceivables, currency)}
+            href="/reports/financial/outstanding-balances"
+          />
+          <KpiCard
+            icon={BarChart3}
+            label="Today's Sales"
+            value={money(data.kpis.salesToday, currency)}
+            href="/reports/sales/trend"
+          />
+          <KpiCard
+            icon={CalendarRange}
+            label="This Month Sales"
+            value={money(data.kpis.salesThisMonth, currency)}
+            href="/reports/sales/trend"
+          />
+        </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <section className="mt-6 space-y-3">
+        <SectionHeading>Customers</SectionHeading>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            icon={Users}
+            label="Overdue Customers"
+            value={data.kpis.overdueCustomers.toLocaleString()}
+            href="/reports/financial/ar-aging"
+          />
+          <Link href="/reports" className="group relative rounded-lg border bg-background p-5 transition hover:shadow-sm">
+            <div className="flex size-10 items-center justify-center rounded-md bg-muted">
+              <BarChart3 className="size-5 text-primary" />
+            </div>
+            <p className="mt-4 text-sm font-medium text-muted-foreground">
+              Reports &amp; Analytics <ArrowUpRight className="ml-1 inline size-3" />
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">View all reports</p>
+          </Link>
+        </div>
+      </section>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="min-w-0 rounded-lg border">
           <div className="border-b px-5 py-4"><h2 className="text-sm font-semibold">Monthly Sales Trend</h2></div>
           <div className="p-4">
@@ -194,7 +252,7 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
                         <p className="text-xs text-muted-foreground">{inv.customer.name}</p>
                       </div>
                       <div className="ml-3 shrink-0 text-right">
-                        <p className="text-xs font-medium">{balance.toLocaleString()} {currency}</p>
+                        <p className="text-xs font-medium tabular-nums">{money(balance, currency)}</p>
                         <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{statusLabel[inv.status] ?? inv.status}</span>
                       </div>
                     </Link>
@@ -209,26 +267,53 @@ async function AnalyticsDashboard({ orgId, currency }: { orgId: string; currency
   );
 }
 
-function StatCard({ icon: Icon, label, value, href }: { icon: React.ComponentType<{ className?: string }>; label: string; value: number | string; href: string }) {
+function money(value: number, currency: string): string {
+  return `${value.toFixed(3)} ${currency}`;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <Link className="rounded-lg border bg-background p-4 sm:p-5 transition hover:shadow-sm" href={href}>
-      <div className="flex size-10 items-center justify-center rounded-md bg-muted">
-        <Icon className="size-5 text-primary" />
-      </div>
-      <p className="mt-4 truncate text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 truncate text-sm text-muted-foreground">{label}</p>
-    </Link>
+    <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+    </h2>
   );
 }
 
-function KpiCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
+function KpiCard({ icon: Icon, label, value, href, emphasis = false }: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  href: string;
+  emphasis?: boolean;
+}) {
   return (
-    <div className="rounded-lg border bg-background p-4 sm:p-5">
-      <div className="flex size-10 items-center justify-center rounded-md bg-muted">
-        <Icon className="size-5 text-primary" />
+    <Link
+      href={href}
+      className={cn(
+        "group rounded-lg border bg-background p-4 transition hover:shadow-sm sm:p-5",
+        emphasis && "border-primary/40 shadow-sm",
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className={cn(
+          "flex size-10 items-center justify-center rounded-md text-primary",
+          emphasis ? "bg-primary/10" : "bg-muted",
+        )}>
+          <Icon className={cn("size-5", emphasis && "text-primary")} />
+        </div>
+        {emphasis ? (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            Costing
+          </span>
+        ) : null}
       </div>
-      <p className="mt-4 truncate text-2xl font-semibold tracking-tight">{value}</p>
+      <p className={cn(
+        "mt-4 truncate text-2xl font-semibold tracking-tight tabular-nums",
+        emphasis && "text-primary",
+      )}>
+        {value}
+      </p>
       <p className="mt-1 truncate text-sm text-muted-foreground">{label}</p>
-    </div>
+    </Link>
   );
 }

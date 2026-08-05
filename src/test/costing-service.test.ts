@@ -271,4 +271,153 @@ describe("CostingService", () => {
       expect(result).toBeNull();
     });
   });
+
+  describe("recordRevaluation", () => {
+    it("adds value without changing quantity and recomputes average", async () => {
+      mockProductCost.findUnique.mockResolvedValue(makeCost());
+      mockProductCost.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.recordRevaluation(
+        {
+          organizationId: "org-1",
+          productId: "prod-1",
+          warehouseId: "wh-1",
+          value: D(30),
+          ledgerEntryId: "entry-r1",
+        },
+        tx as never,
+      );
+
+      // Old: 10qty @ $5 = $50. Revalue +30 -> value 80, avg = 80/10 = $8.
+      expect(result).toEqual({ unitCost: D(8), totalCost: D(30) });
+
+      expect(mockProductCost.updateMany).toHaveBeenCalledWith({
+        where: { id: "cost-1", updatedAt: new Date("2026-07-30T10:00:00Z") },
+        data: {
+          averageCost: D(8),
+          totalValue: D(80),
+        },
+      });
+
+      expect(mockLedgerEntry.update).toHaveBeenCalledWith({
+        where: { id: "entry-r1" },
+        data: { unitCost: D(8), totalCost: D(30) },
+      });
+    });
+
+    it("supports reversal with a negative value", async () => {
+      mockProductCost.findUnique.mockResolvedValue(makeCost());
+      mockProductCost.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.recordRevaluation(
+        {
+          organizationId: "org-1",
+          productId: "prod-1",
+          warehouseId: "wh-1",
+          value: D(-30),
+          ledgerEntryId: "entry-r2",
+        },
+        tx as never,
+      );
+
+      // 50 - 30 = 20; avg = 20/10 = $2
+      expect(result).toEqual({ unitCost: D(2), totalCost: D(-30) });
+
+      expect(mockProductCost.updateMany).toHaveBeenCalledWith({
+        where: expect.any(Object),
+        data: {
+          averageCost: D(2),
+          totalValue: D(20),
+        },
+      });
+
+      // Ledger stores the magnitude; direction OUT encodes the sign for replay.
+      expect(mockLedgerEntry.update).toHaveBeenCalledWith({
+        where: { id: "entry-r2" },
+        data: { unitCost: D(2), totalCost: D(30) },
+      });
+    });
+
+    it("throws when no ProductCost exists (on-hand 0)", async () => {
+      mockProductCost.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.recordRevaluation(
+          {
+            organizationId: "org-1",
+            productId: "prod-1",
+            warehouseId: "wh-1",
+            value: D(30),
+            ledgerEntryId: "entry-r3",
+          },
+          tx as never,
+        ),
+      ).rejects.toThrow("Cannot revalue a product with no on-hand quantity.");
+
+      expect(mockProductCost.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("throws when on-hand quantity is zero", async () => {
+      mockProductCost.findUnique.mockResolvedValue(makeCost({ totalQuantity: D(0), totalValue: D(0) }));
+
+      await expect(
+        service.recordRevaluation(
+          {
+            organizationId: "org-1",
+            productId: "prod-1",
+            warehouseId: "wh-1",
+            value: D(30),
+            ledgerEntryId: "entry-r4",
+          },
+          tx as never,
+        ),
+      ).rejects.toThrow("Cannot revalue a product with no on-hand quantity.");
+    });
+
+    it("retries on concurrent update, then succeeds", async () => {
+      const staleUpdatedAt = new Date("2026-07-30T10:00:00Z");
+      const freshUpdatedAt = new Date("2026-07-30T10:00:01Z");
+
+      mockProductCost.findUnique
+        .mockResolvedValueOnce(makeCost({ updatedAt: staleUpdatedAt }))
+        .mockResolvedValueOnce(makeCost({ updatedAt: freshUpdatedAt }));
+
+      mockProductCost.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockProductCost.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      await service.recordRevaluation(
+        {
+          organizationId: "org-1",
+          productId: "prod-1",
+          warehouseId: "wh-1",
+          value: D(10),
+          ledgerEntryId: "entry-r5",
+        },
+        tx as never,
+      );
+
+      expect(mockProductCost.updateMany).toHaveBeenCalledTimes(2);
+      expect(mockLedgerEntry.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws after exhausting retries", async () => {
+      mockProductCost.findUnique.mockResolvedValue(makeCost());
+      mockProductCost.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.recordRevaluation(
+          {
+            organizationId: "org-1",
+            productId: "prod-1",
+            warehouseId: "wh-1",
+            value: D(10),
+            ledgerEntryId: "entry-r6",
+          },
+          tx as never,
+        ),
+      ).rejects.toThrow("Cost record was modified concurrently");
+
+      expect(mockProductCost.updateMany).toHaveBeenCalledTimes(3);
+    });
+  });
 });

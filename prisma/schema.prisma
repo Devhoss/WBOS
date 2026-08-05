@@ -37,6 +37,10 @@ enum DocumentType {
   TSK
   RN
   QTN
+  LC
+  SIV
+  SPAY
+  IMP
 }
 
 enum QuotationStatus {
@@ -48,6 +52,16 @@ enum QuotationStatus {
 
 enum StorageProvider {
   LOCAL
+}
+
+enum AttachmentType {
+  PROFORMA
+  COMMERCIAL_INVOICE
+  PACKING_LIST
+  BILL_OF_LADING
+  INSURANCE
+  PAYMENT_RECEIPT
+  OTHER
 }
 
 enum ProductStatus {
@@ -70,6 +84,38 @@ enum InventoryMovementType {
   SUPPLIER_RETURN
   DAMAGE
   EXPIRED
+  LANDED_COST
+}
+
+enum LandedCostStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum LandedCostAllocationBasis {
+  BY_VALUE
+  BY_QUANTITY
+  BY_WEIGHT
+  BY_VOLUME
+  MANUAL
+}
+
+enum LandedCostExpenseType {
+  OCEAN_FREIGHT
+  AIR_FREIGHT
+  CUSTOMS_TAX
+  INSURANCE
+  CUSTOMS_BROKER
+  LOCAL_TRANSPORT
+  PORT_FEES
+  DOCUMENTATION
+  OTHER
+}
+
+enum LandedCostPostingTreatment {
+  CAPITALIZED
+  EXPENSED
 }
 
 enum InventoryDirection {
@@ -225,6 +271,14 @@ enum CreditNoteStatus {
   CANCELLED
 }
 
+enum SupplierInvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
 model User {
   id            String   @id
   name          String
@@ -234,29 +288,35 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions               Session[]
-  accounts               Account[]
-  memberships            OrganizationMembership[]
-  activityLogs           ActivityLog[]
-  attachments            Attachment[]
-  inventoryTransactions  InventoryTransaction[]
-  purchaseOrdersCreated  PurchaseOrder[]          @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]          @relation("POApprovedBy")
-  purchaseOrdersArchived PurchaseOrder[]          @relation("POArchivedBy")
-  salesOrdersCreated     SalesOrder[]             @relation("SOCreatedBy")
-  salesOrdersApproved    SalesOrder[]             @relation("SOApprovedBy")
-  salesOrdersArchived    SalesOrder[]             @relation("SOArchivedBy")
-  shipmentsCreated       Shipment[]               @relation("ShipmentCreatedBy")
-  cycleCountsCounted     CycleCount[]             @relation("CycleCountCountedBy")
-  cycleCountsApproved    CycleCount[]             @relation("CycleCountApprovedBy")
-  tasksAssigned          Task[]                   @relation("TaskAssignee")
-  tasksCreated           Task[]                   @relation("TaskCreator")
-  returnOrdersCreated    ReturnOrder[]            @relation("ReturnCreatedBy")
-  creditNotesCreated     CreditNote[]             @relation("CreditNoteCreatedBy")
-  quotationsCreated      Quotation[]              @relation("QtCreatedBy")
-  quotationsCancelled    Quotation[]              @relation("QtCancelledBy")
-  notifications          Notification[]
-  deviceTokens           DeviceToken[]
+  sessions                Session[]
+  accounts                Account[]
+  memberships             OrganizationMembership[]
+  activityLogs            ActivityLog[]
+  attachments             Attachment[]
+  inventoryTransactions   InventoryTransaction[]
+  purchaseOrdersCreated   PurchaseOrder[]          @relation("POCreatedBy")
+  purchaseOrdersApproved  PurchaseOrder[]          @relation("POApprovedBy")
+  purchaseOrdersArchived  PurchaseOrder[]          @relation("POArchivedBy")
+  salesOrdersCreated      SalesOrder[]             @relation("SOCreatedBy")
+  salesOrdersApproved     SalesOrder[]             @relation("SOApprovedBy")
+  salesOrdersArchived     SalesOrder[]             @relation("SOArchivedBy")
+  shipmentsCreated        Shipment[]               @relation("ShipmentCreatedBy")
+  cycleCountsCounted      CycleCount[]             @relation("CycleCountCountedBy")
+  cycleCountsApproved     CycleCount[]             @relation("CycleCountApprovedBy")
+  tasksAssigned           Task[]                   @relation("TaskAssignee")
+  tasksCreated            Task[]                   @relation("TaskCreator")
+  returnOrdersCreated     ReturnOrder[]            @relation("ReturnCreatedBy")
+  creditNotesCreated      CreditNote[]             @relation("CreditNoteCreatedBy")
+  quotationsCreated       Quotation[]              @relation("QtCreatedBy")
+  quotationsCancelled     Quotation[]              @relation("QtCancelledBy")
+  notifications           Notification[]
+  deviceTokens            DeviceToken[]
+  landedCostsCreated      LandedCost[]             @relation("LCCreatedBy")
+  landedCostsPosted       LandedCost[]             @relation("LCPostedBy")
+  landedCostsCancelled    LandedCost[]             @relation("LCCancelledBy")
+  supplierInvoicesCreated SupplierInvoice[]        @relation("SICreatedBy")
+  supplierPaymentsCreated SupplierInvoicePayment[] @relation("SIPaymentCreatedBy")
+  importShipmentsCreated  ImportShipment[]         @relation("IMPCreatedBy")
 
   @@map("user")
 }
@@ -351,9 +411,14 @@ model Organization {
   creditNoteLines           CreditNoteLine[]
   quotationLines            QuotationLine[]
 
-  notifications Notification[]
-  quotations    Quotation[]
-  productCosts  ProductCost[]
+  notifications                Notification[]
+  quotations                   Quotation[]
+  productCosts                 ProductCost[]
+  landedCosts                  LandedCost[]
+  supplierInvoices             SupplierInvoice[]
+  supplierInvoicePayments      SupplierInvoicePayment[]
+  importShipments              ImportShipment[]
+  importShipmentPurchaseOrders ImportShipmentPurchaseOrder[]
 
   @@map("organizations")
 }
@@ -373,6 +438,8 @@ model Product {
   defaultSellingPrice Decimal?      @db.Decimal(18, 3)
   defaultCurrency     CurrencyCode  @default(KWD)
   piecesPerBox        Decimal?      @db.Decimal(18, 0)
+  weightPerUnit       Decimal?      @db.Decimal(18, 6)
+  volumePerUnit       Decimal?      @db.Decimal(18, 6)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   archivedAt          DateTime?
@@ -480,9 +547,12 @@ model Supplier {
   updatedAt      DateTime  @updatedAt
   archivedAt     DateTime?
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  products       Product[]
-  purchaseOrders PurchaseOrder[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products         Product[]
+  purchaseOrders   PurchaseOrder[]
+  landedCosts      LandedCost[]
+  supplierInvoices SupplierInvoice[]
+  importShipments  ImportShipment[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, code])
@@ -579,12 +649,13 @@ model PurchaseOrder {
   updatedAt            DateTime            @updatedAt
   archivedAt           DateTime?
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  createdBy    User                @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy   User?               @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  archivedBy   User?               @relation("POArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
-  lines        PurchaseOrderLine[]
+  organization        Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier            Supplier                      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy           User                          @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy          User?                         @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  archivedBy          User?                         @relation("POArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  lines               PurchaseOrderLine[]
+  importShipmentLinks ImportShipmentPurchaseOrder[]
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
@@ -997,6 +1068,113 @@ model Payment {
   @@map("payments")
 }
 
+model SupplierInvoice {
+  id             String                @id @default(cuid())
+  organizationId String
+  siNumber       String
+  supplierId     String
+  status         SupplierInvoiceStatus @default(DRAFT)
+  currency       CurrencyCode          @default(KWD)
+  subtotal       Decimal               @db.Decimal(18, 3)
+  taxAmount      Decimal               @default(0) @db.Decimal(18, 3)
+  totalAmount    Decimal               @db.Decimal(18, 3)
+  amountPaid     Decimal               @default(0) @db.Decimal(18, 3)
+  reference      String?
+  dueDate        DateTime?
+  issuedAt       DateTime?
+  paidAt         DateTime?
+  notes          String?
+  createdById    String
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  archivedAt     DateTime?
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier        Supplier                 @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy       User                     @relation("SICreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  payments        SupplierInvoicePayment[]
+  importShipments ImportShipment[]
+
+  @@unique([organizationId, siNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  @@map("supplier_invoices")
+}
+
+model SupplierInvoicePayment {
+  id                String        @id @default(cuid())
+  organizationId    String
+  paymentNumber     String
+  supplierInvoiceId String
+  amount            Decimal       @db.Decimal(18, 3)
+  currency          CurrencyCode  @default(KWD)
+  method            PaymentMethod
+  reference         String?
+  paidAt            DateTime      @default(now())
+  notes             String?
+  createdById       String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierInvoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id], onDelete: Cascade)
+  createdBy       User            @relation("SIPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, paymentNumber])
+  @@index([organizationId, supplierInvoiceId])
+  @@map("supplier_invoice_payments")
+}
+
+model ImportShipment {
+  id                String       @id @default(cuid())
+  organizationId    String
+  shipmentNumber    String
+  supplierId        String
+  currency          CurrencyCode @default(KWD)
+  containerRef      String?
+  vessel            String?
+  portOfLoading     String?
+  portOfDischarge   String?
+  etd               DateTime?
+  eta               DateTime?
+  supplierInvoiceId String?
+  landedCostId      String?
+  notes             String?
+  createdById       String
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  archivedAt        DateTime?
+
+  organization       Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier           Supplier                      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy          User                          @relation("IMPCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  supplierInvoice    SupplierInvoice?              @relation(fields: [supplierInvoiceId], references: [id], onDelete: SetNull)
+  landedCost         LandedCost?                   @relation(fields: [landedCostId], references: [id], onDelete: SetNull)
+  purchaseOrderLinks ImportShipmentPurchaseOrder[]
+
+  @@unique([organizationId, shipmentNumber])
+  @@index([organizationId, supplierId])
+  @@index([organizationId, supplierInvoiceId])
+  @@map("import_shipments")
+}
+
+model ImportShipmentPurchaseOrder {
+  id               String   @id @default(cuid())
+  organizationId   String
+  importShipmentId String
+  purchaseOrderId  String
+  createdAt        DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  importShipment ImportShipment @relation(fields: [importShipmentId], references: [id], onDelete: Cascade)
+  purchaseOrder  PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([importShipmentId, purchaseOrderId])
+  @@unique([organizationId, purchaseOrderId])
+  @@index([organizationId, importShipmentId])
+  @@map("import_shipment_purchase_orders")
+}
+
 model InventoryTransaction {
   id             String                     @id @default(cuid())
   organizationId String
@@ -1087,14 +1265,14 @@ model InventoryLedgerEntry {
 }
 
 model ProductCost {
-  id              String   @id @default(cuid())
-  organizationId  String
-  productId       String
-  warehouseId     String
-  averageCost     Decimal  @db.Decimal(18, 6)
-  totalQuantity   Decimal  @db.Decimal(18, 6)
-  totalValue      Decimal  @db.Decimal(18, 6)
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(cuid())
+  organizationId String
+  productId      String
+  warehouseId    String
+  averageCost    Decimal  @db.Decimal(18, 6)
+  totalQuantity  Decimal  @db.Decimal(18, 6)
+  totalValue     Decimal  @db.Decimal(18, 6)
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -1104,6 +1282,114 @@ model ProductCost {
   @@index([organizationId, productId])
   @@index([organizationId, warehouseId])
   @@map("product_costs")
+}
+
+model LandedCost {
+  id                     String                    @id @default(cuid())
+  organizationId         String
+  lcNumber               String
+  supplierId             String?
+  status                 LandedCostStatus          @default(DRAFT)
+  allocationBasis        LandedCostAllocationBasis @default(BY_VALUE)
+  postingDate            DateTime?
+  currency               CurrencyCode              @default(KWD)
+  exchangeRate           Decimal                   @default(1) @db.Decimal(18, 6)
+  notes                  String?
+  createdById            String
+  postedById             String?
+  cancelledById          String?
+  postedAt               DateTime?
+  cancelledAt            DateTime?
+  inventoryTransactionId String?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier        Supplier?              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy       User                   @relation("LCCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  postedBy        User?                  @relation("LCPostedBy", fields: [postedById], references: [id], onDelete: SetNull)
+  cancelledBy     User?                  @relation("LCCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  expenses        LandedCostExpense[]
+  lines           LandedCostLine[]
+  receipts        LandedCostReceipt[]
+  allocations     LandedCostAllocation[]
+  importShipments ImportShipment[]
+
+  @@unique([organizationId, lcNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  @@map("landed_costs")
+}
+
+model LandedCostExpense {
+  id             String                @id @default(cuid())
+  organizationId String
+  landedCostId   String
+  expenseType    LandedCostExpenseType
+  description    String?
+  currency       CurrencyCode
+  exchangeRate   Decimal               @db.Decimal(18, 6)
+  amount         Decimal               @db.Decimal(18, 3)
+  baseAmount     Decimal               @db.Decimal(18, 6)
+
+  landedCost  LandedCost             @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+  allocations LandedCostAllocation[]
+
+  @@index([organizationId, landedCostId])
+  @@map("landed_cost_expenses")
+}
+
+model LandedCostLine {
+  id               String                      @id @default(cuid())
+  organizationId   String
+  landedCostId     String
+  productId        String
+  warehouseId      String
+  unitOfMeasureId  String
+  quantity         Decimal                     @db.Decimal(18, 6)
+  invoiceValue     Decimal                     @db.Decimal(18, 6)
+  weightTotal      Decimal?                    @db.Decimal(18, 6)
+  volumeTotal      Decimal?                    @db.Decimal(18, 6)
+  allocatedAmount  Decimal                     @db.Decimal(18, 6)
+  postingTreatment LandedCostPostingTreatment?
+
+  landedCost  LandedCost             @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+  allocations LandedCostAllocation[]
+
+  @@index([organizationId, landedCostId])
+  @@index([organizationId, productId])
+  @@index([organizationId, warehouseId])
+  @@map("landed_cost_lines")
+}
+
+model LandedCostReceipt {
+  id                     String @id @default(cuid())
+  organizationId         String
+  landedCostId           String
+  inventoryTransactionId String
+
+  landedCost LandedCost @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+
+  @@unique([landedCostId, inventoryTransactionId])
+  @@index([inventoryTransactionId])
+  @@map("landed_cost_receipts")
+}
+
+model LandedCostAllocation {
+  id             String  @id @default(cuid())
+  organizationId String
+  landedCostId   String
+  lineId         String
+  expenseId      String
+  amount         Decimal @db.Decimal(18, 6)
+
+  landedCost LandedCost        @relation(fields: [landedCostId], references: [id], onDelete: Cascade)
+  line       LandedCostLine    @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  expense    LandedCostExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@unique([landedCostId, lineId, expenseId])
+  @@index([organizationId, landedCostId])
+  @@map("landed_cost_allocations")
 }
 
 model OrganizationMembership {
@@ -1177,6 +1463,7 @@ model Attachment {
   fileName       String
   mimeType       String
   sizeBytes      Int
+  attachmentType AttachmentType  @default(OTHER)
   provider       StorageProvider @default(LOCAL)
   storageKey     String
   createdAt      DateTime        @default(now())
@@ -1396,16 +1683,16 @@ enum DevicePlatform {
 }
 
 model DeviceToken {
-  id             String         @id @default(cuid())
-  userId         String
-  platform       DevicePlatform
-  token          String
-  deviceName     String?
-  appVersion     String?
-  lastSeenAt     DateTime       @default(now())
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id         String         @id @default(cuid())
+  userId     String
+  platform   DevicePlatform
+  token      String
+  deviceName String?
+  appVersion String?
+  lastSeenAt DateTime       @default(now())
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
