@@ -1,0 +1,49 @@
+import { stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { join, basename } from "node:path";
+
+import { NextResponse } from "next/server";
+
+import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { BusinessError } from "@/shared/errors/business-error";
+
+import { BACKUP_PACKAGE_PREFIX } from "@/domains/backups/backup-format";
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ fileName: string }> },
+) {
+  try {
+    const { fileName } = await params;
+    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    requireMinimumRole(context, "ADMIN");
+
+    if (!fileName.startsWith(BACKUP_PACKAGE_PREFIX) || !fileName.endsWith(".tar.gz") || fileName !== basename(fileName)) {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const backupRoot = process.env.WBOS_BACKUP_DIR ?? join(process.cwd(), "backups");
+    const filePath = join(backupRoot, "packages", fileName);
+    const fileStat = await stat(filePath).catch(() => null);
+
+    if (!fileStat?.isFile()) {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const stream = createReadStream(filePath);
+    return new NextResponse(stream as unknown as ReadableStream, {
+      headers: {
+        "Content-Type": "application/gzip",
+        "Content-Length": String(fileStat.size),
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
+  } catch (error) {
+    if (error instanceof BusinessError) {
+      return new NextResponse(null, { status: 403 });
+    }
+    return new NextResponse(null, { status: 401 });
+  }
+}

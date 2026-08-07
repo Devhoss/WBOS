@@ -16,8 +16,8 @@ coverage/
 .env.*.local
 
 # Runtime data
-storage/
-backups/
+/storage/
+/backups/
 
 # Docker
 *.tar
