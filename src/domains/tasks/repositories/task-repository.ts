@@ -75,6 +75,26 @@ export class TaskRepository {
     return { data, total, page, pageSize };
   }
 
+  async promoteDueTasks(organizationId: string, boundary: Date) {
+    return prisma.$queryRaw<
+      Array<{
+        id: string;
+        taskNumber: string;
+        assignedToId: string;
+        referenceType: string;
+        referenceId: string;
+        dueAt: Date | null;
+      }>
+    >`
+      UPDATE "tasks"
+      SET "status" = 'READY', "updatedAt" = NOW()
+      WHERE "organizationId" = ${organizationId}
+        AND "status" = 'SCHEDULED'
+        AND "dueAt" < ${boundary}
+      RETURNING "id", "taskNumber", "assignedToId", "referenceType", "referenceId", "dueAt"
+    `;
+  }
+
   async create(
     organizationId: string,
     data: {
@@ -170,6 +190,25 @@ export class TaskRepository {
     const result = await prisma.task.updateMany({
       where: { id, organizationId, updatedAt: optimisticUpdatedAt },
       data,
+    });
+    if (result.count === 0) {
+      const existing = await prisma.task.findFirst({ where: { id, organizationId }, select: { updatedAt: true } });
+      if (!existing) throw new BusinessError("Task not found.", "TASK_NOT_FOUND");
+      throw new BusinessError("Task was modified by another user. Reload and try again.", "TASK_CONFLICT");
+    }
+  }
+
+  async updateSchedule(
+    organizationId: string,
+    id: string,
+    dueAt: Date,
+    status: TaskStatus,
+    optimisticUpdatedAt: Date,
+  ) {
+    assertValidDate(optimisticUpdatedAt, "optimistic concurrency (updatedAt)");
+    const result = await prisma.task.updateMany({
+      where: { id, organizationId, updatedAt: optimisticUpdatedAt },
+      data: { dueAt, status },
     });
     if (result.count === 0) {
       const existing = await prisma.task.findFirst({ where: { id, organizationId }, select: { updatedAt: true } });

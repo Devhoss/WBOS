@@ -3,6 +3,9 @@ import { join } from "path";
 import { existsSync } from "fs";
 import { NextResponse } from "next/server";
 
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { BusinessError } from "@/shared/errors/business-error";
+
 const STORAGE_ROOT =
   process.env.WBOS_STORAGE_ROOT ?? join(process.cwd(), "public");
 
@@ -19,7 +22,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
@@ -29,6 +32,19 @@ export async function GET(
   }
 
   const safePath = path.join("/").replace(/\.\.\//g, "").replace(/\.\./g, "");
+
+  const isAttachment = safePath.startsWith("uploads/attachments/");
+
+  if (isAttachment) {
+    try {
+      await new AuthenticatedRequestContextService().getCurrentContext(request.headers);
+    } catch (error) {
+      if (error instanceof BusinessError) {
+        return new NextResponse(null, { status: 404 });
+      }
+      return new NextResponse(null, { status: 401 });
+    }
+  }
 
   const candidates = [
     join(STORAGE_ROOT, "uploads", safePath),

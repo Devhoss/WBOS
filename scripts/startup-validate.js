@@ -7,8 +7,9 @@
  * Fails fast with meaningful messages if something is wrong.
  */
 
-const REQUIRED_ENV_VARS = ["DATABASE_URL", "BETTER_AUTH_SECRET"];
-const RECOMMENDED_ENV_VARS = ["BETTER_AUTH_URL", "WBOS_STORAGE_ROOT"];
+const REQUIRED_ENV_VARS = ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL"];
+const RECOMMENDED_ENV_VARS = ["WBOS_STORAGE_ROOT", "WBOS_BACKUP_DIR"];
+const BACKUP_TOOLS = ["pg_dump", "pg_restore", "tar"];
 
 let exitCode = 0;
 
@@ -108,6 +109,37 @@ console.log("\n2. Database Connection");
     }
   } catch (err) {
     fail(`Upload directory check FAILED: ${err.message}`);
+  }
+
+  // ── Backup Tools ──
+  console.log("\n6. Backup Tools");
+
+  const { spawnSync } = await import("child_process");
+  for (const tool of BACKUP_TOOLS) {
+    const probe = spawnSync(tool, ["--version"], { encoding: "utf-8" });
+    if (probe.status === 0) {
+      ok(`${tool} available (${(probe.stdout || "").trim().split("\n")[0]})`);
+    } else {
+      fail(`${tool} is NOT available in PATH`);
+    }
+  }
+
+  // ── Disk Space ──
+  console.log("\n7. Disk Space");
+  try {
+    const { statfsSync } = await import("fs");
+    for (const dir of [storageRoot, process.env.WBOS_BACKUP_DIR || "./backups"]) {
+      const s = statfsSync(dir);
+      const percent = s.bavail && s.blocks ? Math.round((s.bavail / s.blocks) * 100) : null;
+      const freeGb = (s.bavail * s.bsize) / 1024 / 1024 / 1024;
+      if (percent !== null && percent < 10) {
+        fail(`${dir}: only ${freeGb.toFixed(1)} GB free (${percent}%)`);
+      } else {
+        ok(`${dir}: ${freeGb.toFixed(1)} GB free${percent !== null ? ` (${percent}%)` : ""}`);
+      }
+    }
+  } catch (err) {
+    warn(`Disk space check skipped: ${err.message}`);
   }
 
   // ── Summary ──

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateProduct } from "@/domains/products/actions/activate-product";
 import { archiveProduct } from "@/domains/products/actions/archive-product";
 import { deleteProduct } from "@/domains/products/actions/delete-product";
@@ -79,6 +80,8 @@ function ProductActions({
 }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function runAction(
     action: () => Promise<{ ok: boolean; message?: string }>,
@@ -94,14 +97,11 @@ function ProductActions({
     if (result.ok) router.refresh();
   }
 
-  function confirmDelete() {
-    if (
-      !window.confirm(
-        `Delete ${product.name}? This cannot be undone if the product has no related records.`,
-      )
-    )
-      return;
-    void runAction(() => deleteProduct({ id: product.id }), "Product deleted.");
+  async function handleDelete() {
+    setDeleting(true);
+    await runAction(() => deleteProduct({ id: product.id }), "Product deleted.");
+    setDeleting(false);
+    setConfirmDelete(false);
   }
 
   useEffect(() => {
@@ -141,7 +141,7 @@ function ProductActions({
     {
       label: "Delete",
       variant: "destructive" as const,
-      onClick: confirmDelete,
+      onClick: () => setConfirmDelete(true),
     },
   ];
 
@@ -173,6 +173,15 @@ function ProductActions({
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete product"
+        description={`Delete ${product.name}? This cannot be undone if the product has no related records.`}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => void handleDelete()}
+      />
     </>
   );
 }

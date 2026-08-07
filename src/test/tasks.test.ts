@@ -4,8 +4,10 @@ import { Prisma } from "@prisma/client";
 
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
+import { NotificationRepository } from "@/domains/notifications/repositories/notification-repository";
 import { TaskDomainService } from "@/domains/tasks/services/task-domain-service";
 import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
+import { prisma } from "@/infrastructure/database/prisma";
 import { BusinessError } from "@/shared/errors/business-error";
 
 function mockContext(overrides = {}) {
@@ -163,6 +165,15 @@ describe("TaskDomainService", () => {
       ).rejects.toThrow(BusinessError);
     });
 
+    it("should reject start when task is SCHEDULED with TASK_NOT_AVAILABLE_YET", async () => {
+      const mockTask = createMockTask({ status: "SCHEDULED", dueAt: new Date() });
+      vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
+
+      await expect(
+        service.start(mockContext(), "task-1", mockTask.updatedAt),
+      ).rejects.toMatchObject({ code: "TASK_NOT_AVAILABLE_YET" });
+    });
+
     it("should reject start when task not found", async () => {
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(null);
 
@@ -250,6 +261,77 @@ describe("TaskDomainService", () => {
     });
   });
 
+  describe("reschedule", () => {
+    const ctx = () => mockContext({ organization: { timezone: "UTC" } });
+
+    it("should keep a future-dated task SCHEDULED", async () => {
+      const futureDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      const mockTask = createMockTask({ status: "SCHEDULED", dueAt: futureDate });
+      vi.spyOn(TaskRepository.prototype, "findById")
+        .mockResolvedValueOnce(mockTask as any)
+        .mockResolvedValueOnce({ ...mockTask, status: "SCHEDULED", dueAt: futureDate, updatedAt: new Date() } as any);
+      const updateScheduleSpy = vi.spyOn(TaskRepository.prototype, "updateSchedule").mockResolvedValue(undefined as never);
+
+      const result = await service.reschedule(ctx(), "task-1", futureDate, mockTask.updatedAt);
+
+      expect(updateScheduleSpy).toHaveBeenCalledWith("org-1", "task-1", futureDate, "SCHEDULED", mockTask.updatedAt);
+      expect(result.status).toBe("SCHEDULED");
+    });
+
+    it("should activate immediately (READY) when rescheduled to today or past", async () => {
+      const pastDate = new Date(Date.now() - 60 * 60 * 1000);
+      const mockTask = createMockTask({ status: "SCHEDULED", dueAt: pastDate });
+      vi.spyOn(TaskRepository.prototype, "findById")
+        .mockResolvedValueOnce(mockTask as any)
+        .mockResolvedValueOnce({ ...mockTask, status: "READY", dueAt: pastDate, updatedAt: new Date() } as any);
+      const updateScheduleSpy = vi.spyOn(TaskRepository.prototype, "updateSchedule").mockResolvedValue(undefined as never);
+
+      const result = await service.reschedule(ctx(), "task-1", pastDate, mockTask.updatedAt);
+
+      expect(updateScheduleSpy).toHaveBeenCalledWith("org-1", "task-1", pastDate, "READY", mockTask.updatedAt);
+      expect(result.status).toBe("READY");
+    });
+
+    it("should reject an invalid due date with INVALID_DUE_AT", async () => {
+      const mockTask = createMockTask({ status: "SCHEDULED" });
+      vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
+
+      await expect(
+        service.reschedule(ctx(), "task-1", new Date("invalid"), mockTask.updatedAt),
+      ).rejects.toMatchObject({ code: "INVALID_DUE_AT" });
+    });
+
+    it("should reject rescheduling a task that is not SCHEDULED or READY", async () => {
+      const mockTask = createMockTask({ status: "IN_PROGRESS", startedAt: new Date() });
+      vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
+
+      await expect(
+        service.reschedule(ctx(), "task-1", new Date(Date.now() + 86400000), mockTask.updatedAt),
+      ).rejects.toMatchObject({ code: "TASK_INVALID_STATUS" });
+    });
+
+    it("should reject rescheduling a task that does not exist", async () => {
+      vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(null);
+
+      await expect(
+        service.reschedule(ctx(), "nonexistent", new Date(), new Date()),
+      ).rejects.toThrow("Task not found");
+    });
+
+    it("should propagate TASK_CONFLICT on stale optimistic token", async () => {
+      const futureDate = new Date(Date.now() + 86400000);
+      const mockTask = createMockTask({ status: "SCHEDULED", dueAt: futureDate });
+      vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
+      vi.spyOn(TaskRepository.prototype, "updateSchedule").mockRejectedValue(
+        new BusinessError("Task was modified by another user. Reload and try again.", "TASK_CONFLICT"),
+      );
+
+      await expect(
+        service.reschedule(ctx(), "task-1", futureDate, mockTask.updatedAt),
+      ).rejects.toMatchObject({ code: "TASK_CONFLICT" });
+    });
+  });
+
   describe("updateLine", () => {
     it("should update line quantity on IN_PROGRESS task", async () => {
       const mockTask = createMockTask({ status: "IN_PROGRESS", startedAt: new Date() });
@@ -293,6 +375,49 @@ describe("TaskDomainService", () => {
 
       expect(result).not.toBeNull();
       expect(addPickSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("ensurePromotedTasks", () => {
+    it("should promote due tasks and notify their assignees with Order Ready", async () => {
+      const promoted = [
+        {
+          id: "task-1",
+          taskNumber: "TSK-2026-000001",
+          assignedToId: "user-2",
+          referenceType: "SALES_ORDER",
+          referenceId: "so-1",
+          dueAt: new Date(),
+        },
+      ] as never;
+      vi.spyOn(TaskRepository.prototype, "promoteDueTasks").mockResolvedValue(promoted);
+      vi.spyOn(prisma.salesOrder, "findMany").mockResolvedValue([
+        { id: "so-1", soNumber: "SO-2026-0001" },
+      ] as never);
+      const createSpy = vi.spyOn(NotificationRepository.prototype, "create").mockResolvedValue({} as never);
+
+      await service.ensurePromotedTasks("org-1", new Date());
+
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: "org-1",
+          userId: "user-2",
+          title: "Order Ready",
+          type: "TASK_AVAILABLE",
+          link: "task-1",
+          body: expect.stringContaining("SO-2026-0001"),
+        }),
+      );
+    });
+
+    it("should not notify when no tasks are promoted", async () => {
+      vi.spyOn(TaskRepository.prototype, "promoteDueTasks").mockResolvedValue([] as never);
+      const createSpy = vi.spyOn(NotificationRepository.prototype, "create").mockResolvedValue({} as never);
+
+      await service.ensurePromotedTasks("org-1", new Date());
+
+      expect(createSpy).not.toHaveBeenCalled();
     });
   });
 

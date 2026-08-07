@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateUnitOfMeasure } from "@/domains/units/actions/activate-unit-of-measure";
 import { archiveUnitOfMeasure } from "@/domains/units/actions/archive-unit-of-measure";
 import { deleteUnitOfMeasure } from "@/domains/units/actions/delete-unit-of-measure";
@@ -29,6 +30,8 @@ export function UnitTable({ units, archived }: {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UnitRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const editingUnit = [...units, ...archived].find((u) => u.id === editingId) ?? null;
 
@@ -37,6 +40,13 @@ export function UnitTable({ units, archived }: {
     const result = await action();
     setFeedback(result.ok ? msg : result.message ?? "Unable to update unit.");
     if (result.ok) router.refresh();
+  }
+
+  async function handleDelete(u: UnitRow) {
+    setDeleting(true);
+    await runAction(() => deleteUnitOfMeasure({ id: u.id }), "Unit deleted.");
+    setDeleting(false);
+    setDeleteTarget(null);
   }
 
   if (units.length === 0 && archived.length === 0) {
@@ -77,7 +87,7 @@ export function UnitTable({ units, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(u.id) },
                     { label: "Archive", onClick: () => void runAction(() => archiveUnitOfMeasure({ id: u.id }), "Unit archived.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${u.name}? This cannot be undone if the unit has no related products.`)) void runAction(() => deleteUnitOfMeasure({ id: u.id }), "Unit deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(u) },
                   ]} />
                 </td>
               </tr>
@@ -97,7 +107,7 @@ export function UnitTable({ units, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(u.id) },
                     { label: "Activate", onClick: () => void runAction(() => activateUnitOfMeasure({ id: u.id }), "Unit activated.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${u.name}? This cannot be undone if the unit has no related products.`)) void runAction(() => deleteUnitOfMeasure({ id: u.id }), "Unit deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(u) },
                   ]} />
                 </td>
               </tr>
@@ -118,6 +128,15 @@ export function UnitTable({ units, archived }: {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete unit"
+        description={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone if the unit has no related products.` : undefined}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { Archive, CheckCircle, Send, Trash2, XCircle } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { approvePurchaseOrder } from "@/domains/purchasing/actions/approve-purchase-order";
 import { archivePurchaseOrder } from "@/domains/purchasing/actions/archive-purchase-order";
 import { cancelPurchaseOrder } from "@/domains/purchasing/actions/cancel-purchase-order";
@@ -14,6 +15,7 @@ export function PurchaseOrderActions({ poId, status, archivedAt }: { poId: strin
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function submit() {
     setFeedback(null);
@@ -45,9 +47,9 @@ export function PurchaseOrderActions({ poId, status, archivedAt }: { poId: strin
 
   async function deleteDoc() {
     setFeedback(null);
-    if (!window.confirm("Delete this order? This action cannot be undone.")) return;
     const result = await deletePurchaseOrder({ id: poId });
-    if (!result.ok) { setFeedback(result.message ?? null); return; }
+    if (!result.ok) { setFeedback(result.message ?? null); setConfirmDelete(false); return; }
+    setConfirmDelete(false);
     router.push("/purchasing/orders");
   }
 
@@ -74,10 +76,19 @@ export function PurchaseOrderActions({ poId, status, archivedAt }: { poId: strin
       ) : null}
       {["DRAFT", "PENDING_APPROVAL"].includes(status) && !archivedAt ? (
         <button className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-red-400 px-3 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-950"
-          disabled={isPending} type="button" onClick={() => startTransition(() => void deleteDoc())}>
+          disabled={isPending} type="button" onClick={() => setConfirmDelete(true)}>
           <Trash2 className="size-4" />{isPending ? "Deleting..." : "Delete Permanently"}
         </button>
       ) : null}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete purchase order"
+        description="Delete this order? This action cannot be undone."
+        confirmLabel="Delete"
+        busy={isPending}
+        onConfirm={() => startTransition(() => void deleteDoc())}
+      />
       {["APPROVED", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CANCELLED"].includes(status) && !archivedAt ? (
         <button className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-60"
           disabled={isPending} type="button" onClick={() => startTransition(() => void archiveDoc())}>

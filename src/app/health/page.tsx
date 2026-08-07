@@ -1,8 +1,9 @@
 import { AppShell } from "@/components/app-shell";
 import { prisma } from "@/infrastructure/database/prisma";
 import { chromium } from "playwright";
-import { existsSync, statSync, readdirSync } from "node:fs";
+import { existsSync, statSync, readdirSync, statfsSync } from "node:fs";
 import path from "node:path";
+import { BackupService } from "@/domains/backups/services/backup-service";
 import {
   Activity,
   CheckCircle2,
@@ -12,7 +13,9 @@ import {
   Globe,
   HardDrive,
   Package,
+  RefreshCw,
   Server,
+  Wrench,
   XCircle,
 } from "lucide-react";
 
@@ -101,11 +104,24 @@ async function getHealth() {
           tierCounts.push(`${tier}:0`);
         }
       }
-      if (totalFiles > 0) {
+
+      const packagesDir = path.join(bp, "packages");
+      let packageCount = 0;
+      let pkgLatest = 0;
+      if (existsSync(packagesDir)) {
+        const pkgFiles = readdirSync(packagesDir).filter((f) => f.startsWith("wbos-backup-") && f.endsWith(".tar.gz"));
+        packageCount = pkgFiles.length;
+        if (pkgFiles.length > 0) {
+          pkgLatest = Math.max(...pkgFiles.map((f) => statSync(path.join(packagesDir, f)).mtimeMs));
+          latestMtime = Math.max(latestMtime, pkgLatest);
+        }
+      }
+
+      if (totalFiles + packageCount > 0) {
         const ageHours = Math.round((Date.now() - latestMtime) / 3600000);
         blocks.push({
           label: "Backups",
-          value: `${totalFiles} files across ${tiers.length} tiers, latest ${ageHours}h ago`,
+          value: `${totalFiles} tiered + ${packageCount} packages, latest ${ageHours}h ago`,
           ok: ageHours < 48,
           icon: <FileText className="size-5" />,
         });
@@ -117,6 +133,47 @@ async function getHealth() {
     }
   } catch {
     blocks.push({ label: "Backups", value: "Cannot access", ok: false, icon: <FileText className="size-5" /> });
+  }
+
+  const backupService = new BackupService();
+  try {
+    const [tools, status] = await Promise.all([backupService.checkTools(), backupService.getStatus()]);
+    const missing = tools.filter((t) => !t.ok);
+    blocks.push({
+      label: "Backup Tools",
+      value:
+        missing.length > 0
+          ? `Missing: ${missing.map((t) => t.tool).join(", ")}`
+          : tools.map((t) => `${t.tool} ✓`).join(" · "),
+      ok: missing.length === 0,
+      icon: <Wrench className="size-5" />,
+    });
+    blocks.push({
+      label: "Last Restore Test",
+      value: status.lastRestoreTest
+        ? `${status.lastRestoreTest.at} — ${status.lastRestoreTest.packageName}`
+        : "Never restored",
+      ok: status.lastRestoreTest?.result === "success",
+      icon: <RefreshCw className="size-5" />,
+    });
+  } catch {
+    blocks.push({ label: "Backup Tools", value: "Check failed", ok: false, icon: <Wrench className="size-5" /> });
+  }
+
+  for (const dir of [path.resolve(storageRoot), path.resolve(backupsDir)]) {
+    try {
+      const s = statfsSync(dir);
+      const percent = s.bavail && s.blocks ? Math.round((s.bavail / s.blocks) * 100) : null;
+      const freeGb = (s.bavail * s.bsize) / 1024 / 1024 / 1024;
+      blocks.push({
+        label: `Disk · ${path.basename(dir)}`,
+        value: percent !== null ? `${freeGb.toFixed(1)} GB free (${percent}%)` : "unknown",
+        ok: percent === null || percent >= 10,
+        icon: <HardDrive className="size-5" />,
+      });
+    } catch {
+      blocks.push({ label: "Disk", value: "Cannot stat", ok: false, icon: <HardDrive className="size-5" /> });
+    }
   }
 
   blocks.push({

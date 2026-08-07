@@ -39,8 +39,7 @@ export async function updateShipmentStatusAction(input: unknown) {
       if (shipment) {
         await createNotificationService().notifyShipmentReady(
           { organizationId: context.organizationId, userId: context.userId },
-          shipment.shipmentNumber,
-          shipment.id,
+          { shipmentNumber: shipment.shipmentNumber, soNumber: shipment.salesOrder?.soNumber, link: shipment.id },
         );
       }
     }

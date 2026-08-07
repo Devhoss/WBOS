@@ -4,6 +4,7 @@ import { CheckCircle, RotateCcw, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { receiveReturnAction } from "@/domains/returns/actions/receive-return";
 import { completeReturnAction } from "@/domains/returns/actions/complete-return";
 import { cancelReturnAction } from "@/domains/returns/actions/cancel-return";
@@ -36,6 +37,7 @@ export function ReturnActions({
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
   const [receivedLines, setReceivedLines] = useState<Record<string, { qty: string; condition: string }>>({});
 
@@ -95,17 +97,17 @@ export function ReturnActions({
   }
 
   async function handleCancel() {
-    if (!window.confirm("Cancel this return?")) return;
     setFeedback(null);
     setIsPending(true);
     try {
       const result = await cancelReturnAction(ro.id);
-      if (!result.ok) { if (handleStaleError(result)) return; setFeedback(result.message ?? null); setIsPending(false); return; }
+      if (!result.ok) { if (handleStaleError(result)) return; setFeedback(result.message ?? null); setIsPending(false); setConfirmCancel(false); return; }
       setIsPending(false);
       window.location.reload();
     } catch {
       setFeedback("An unexpected error occurred. Please try again.");
       setIsPending(false);
+      setConfirmCancel(false);
     }
   }
 
@@ -170,7 +172,7 @@ export function ReturnActions({
             <button onClick={handleReceive} disabled={isPending} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {isPending ? "Receiving..." : "Confirm Receive"}
             </button>
-            <button onClick={handleCancel} disabled={isPending} className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted">
+            <button onClick={() => setConfirmCancel(true)} disabled={isPending} className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted">
               <XCircle className="size-3.5" /> Cancel Return
             </button>
           </div>
@@ -230,12 +232,22 @@ export function ReturnActions({
             <button onClick={handleComplete} disabled={isPending} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {isPending ? "Completing..." : "Complete Return"}
             </button>
-            <button onClick={handleCancel} disabled={isPending} className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted">
+            <button onClick={() => setConfirmCancel(true)} disabled={isPending} className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted">
               <XCircle className="size-3.5" /> Cancel Return
             </button>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onOpenChange={setConfirmCancel}
+        title="Cancel return"
+        description="Cancel this return?"
+        confirmLabel="Cancel Return"
+        busy={isPending}
+        onConfirm={() => void handleCancel()}
+      />
     </div>
   );
 }

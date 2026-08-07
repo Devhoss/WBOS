@@ -1,0 +1,25 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  try {
+    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const deleted = await createNotificationService().deleteById(
+      context.organizationId,
+      context.userId,
+      id,
+    );
+    if (deleted === 0) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}

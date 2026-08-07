@@ -41,4 +41,46 @@ export class NotificationRepository {
       data: { isRead: true },
     });
   }
+
+  async deleteRead(organizationId: string, userId: string) {
+    return prisma.notification.deleteMany({
+      where: { organizationId, userId, isRead: true },
+    });
+  }
+
+  async deleteById(organizationId: string, userId: string, id: string) {
+    const result = await prisma.notification.deleteMany({
+      where: { id, organizationId, userId },
+    });
+    return result.count;
+  }
+
+  /**
+   * Retention pruning for the "recent activity feed": notifications are deleted
+   * once they are older than `maxAgeDays` OR fall outside the newest `maxPerUser`
+   * entries for a given user. Whichever limit is reached first.
+   */
+  async prune(
+    organizationId: string,
+    userId: string,
+    maxPerUser = 50,
+    maxAgeDays = 30,
+  ) {
+    const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
+    await prisma.notification.deleteMany({
+      where: { organizationId, userId, createdAt: { lt: cutoff } },
+    });
+
+    const latest = await prisma.notification.findMany({
+      where: { organizationId, userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+      take: maxPerUser,
+    });
+    if (latest.length > 0) {
+      await prisma.notification.deleteMany({
+        where: { organizationId, userId, id: { notIn: latest.map((n) => n.id) } },
+      });
+    }
+  }
 }

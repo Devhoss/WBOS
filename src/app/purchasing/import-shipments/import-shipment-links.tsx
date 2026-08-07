@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { linkLandedCost, linkSupplierInvoice } from "@/domains/import-shipments/actions/link-supplier-invoice";
 import { linkPurchaseOrder, unlinkPurchaseOrder } from "@/domains/import-shipments/actions/link-purchase-order";
 import { HelpTooltip } from "@/components/help-tooltip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type Option = {
   id: string;
@@ -60,6 +61,7 @@ export function ImportShipmentLinks({
   const [si, setSi] = useState("");
   const [lc, setLc] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [confirmUnlink, setConfirmUnlink] = useState<string | null>(null);
 
   async function run(action: Promise<{ ok: boolean; message?: string }>) {
     setMessage(null);
@@ -87,9 +89,9 @@ export function ImportShipmentLinks({
   }
 
   function unlinkPo(purchaseOrderId: string) {
-    if (!window.confirm("Unlink this purchase order?")) return;
     startTransition(async () => {
       await run(unlinkPurchaseOrder({ importShipmentId: shipmentId, purchaseOrderId }));
+      setConfirmUnlink(null);
     });
   }
 
@@ -109,7 +111,7 @@ export function ImportShipmentLinks({
                     {link.supplierName} · {link.status.replace(/_/g, " ")} · {Number(link.totalAmount).toFixed(3)}
                   </p>
                 </div>
-                <button className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2 text-xs text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950" disabled={isPending} type="button" onClick={() => unlinkPo(link.id)}>
+                <button className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2 text-xs text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950" disabled={isPending} type="button" onClick={() => setConfirmUnlink(link.id)}>
                   <Unlink className="size-3.5" />Unlink
                 </button>
               </li>
@@ -191,6 +193,16 @@ export function ImportShipmentLinks({
           </>
         )}
       </section>
+
+      <ConfirmDialog
+        open={confirmUnlink !== null}
+        onOpenChange={(open) => { if (!open) setConfirmUnlink(null); }}
+        title="Unlink purchase order"
+        description="Unlink this purchase order?"
+        confirmLabel="Unlink"
+        busy={isPending}
+        onConfirm={() => { if (confirmUnlink) void unlinkPo(confirmUnlink); }}
+      />
     </div>
   );
 }

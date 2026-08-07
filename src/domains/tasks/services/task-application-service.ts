@@ -34,7 +34,7 @@ export class TaskApplicationService {
   ): Promise<{ tasks: TaskSummary[]; total: number }> {
     requireMinimumRole(context, "WAREHOUSE");
     const calendar = new BusinessCalendar(context.organization.timezone);
-    const scheduleBoundary = calendar.startOfTomorrowUTC();
+    const scheduleBoundary = new Date();
     const { data, total } = await this.domain.findMany(context.organizationId, filters, scheduleBoundary);
     return {
       tasks: data.map((t) => ({
@@ -51,8 +51,7 @@ export class TaskApplicationService {
     taskId: string,
   ): Promise<ComposedTaskDetail | null> {
     requireMinimumRole(context, "WAREHOUSE");
-    const calendar = new BusinessCalendar(context.organization.timezone);
-    return this.domain.findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
+    return this.domain.findById(context.organizationId, taskId, new Date());
   }
 
   async startTask(
@@ -86,13 +85,24 @@ export class TaskApplicationService {
     return this.domain.cancel(context, taskId, reason, optimisticUpdatedAt);
   }
 
+  async rescheduleTask(
+    context: AuthenticatedRequestContext,
+    taskId: string,
+    dueAt: string,
+    updatedAt: string,
+  ): Promise<ComposedTaskDetail> {
+    requireMinimumRole(context, "MANAGER");
+    const optimisticUpdatedAt = parseOptimisticDate(updatedAt);
+    const parsedDueAt = new Date(dueAt);
+    return this.domain.reschedule(context, taskId, parsedDueAt, optimisticUpdatedAt);
+  }
+
   async getPickingDetail(
     context: AuthenticatedRequestContext,
     taskId: string,
   ): Promise<PickingDetail | null> {
     requireMinimumRole(context, "WAREHOUSE");
-    const calendar = new BusinessCalendar(context.organization.timezone);
-    return this.domain.getPickingDetail(context.organizationId, taskId, calendar.startOfTomorrowUTC());
+    return this.domain.getPickingDetail(context.organizationId, taskId, new Date());
   }
 
   async updateTaskLine(

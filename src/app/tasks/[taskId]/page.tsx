@@ -10,9 +10,10 @@ import { AuthenticatedRequestContextService } from "@/infrastructure/request/aut
 import { statusColorClass, formatStatus } from "@/components/status-colors";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
-import { BusinessCalendar } from "@/lib/business-calendar";
 
 import { TaskDetailActions } from "./task-detail-actions";
+import { RescheduleTaskForm } from "./reschedule-task-form";
+import { hasMinimumRole } from "@/infrastructure/authorization/rbac";
 
 const typeLabels: Record<string, string> = {
   PICK_ORDER: "Pick Order",
@@ -32,8 +33,7 @@ const statusIcon: Record<string, React.ReactNode> = {
 export async function generateMetadata({ params }: { params: Promise<{ taskId: string }> }): Promise<Metadata> {
   const { taskId } = await params;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const calendar = new BusinessCalendar(context.organization.timezone);
-  const task = await new TaskDomainService().findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
+  const task = await new TaskDomainService().findById(context.organizationId, taskId, new Date());
   if (!task) return { title: "Not Found" };
   return { title: task.taskNumber };
 }
@@ -41,9 +41,8 @@ export async function generateMetadata({ params }: { params: Promise<{ taskId: s
 export default async function TaskDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  const calendar = new BusinessCalendar(context.organization.timezone);
   const domain = new TaskDomainService();
-  const task = await domain.findById(context.organizationId, taskId, calendar.startOfTomorrowUTC());
+  const task = await domain.findById(context.organizationId, taskId, new Date());
   if (!task) notFound();
 
   const timeline = await getEntityTimeline(context.organizationId, "Task", taskId);
@@ -58,6 +57,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const canStart = task.status === "READY";
   const canComplete = task.status === "IN_PROGRESS";
   const canCancel = task.status !== "COMPLETED" && task.status !== "CANCELLED";
+  const canReschedule =
+    hasMinimumRole(context.role, "MANAGER") &&
+    (task.status === "SCHEDULED" || task.status === "READY");
 
   return (
     <AppShell>
@@ -222,6 +224,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
                 ) : null}
               </dl>
             </section>
+
+            {canReschedule ? (
+              <RescheduleTaskForm
+                taskId={taskId}
+                dueAt={task.dueAt?.toISOString() ?? null}
+                updatedAt={task.updatedAt.toISOString()}
+              />
+            ) : null}
 
             <DocumentTimeline entries={timeline} />
           </div>

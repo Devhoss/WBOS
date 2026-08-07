@@ -64,6 +64,15 @@ echo "  ✓ Storage validation passed."
 echo "=========================================="
 echo ""
 
+# Validate environment + backup tools (fails fast on missing pieces)
+echo "[entrypoint] Running startup validation..."
+if ! node /app/scripts/startup-validate.js; then
+  echo ""
+  echo "  ✗ Startup validation FAILED. See messages above."
+  echo ""
+  exit 1
+fi
+
 # Apply database migrations
 echo "[entrypoint] Running database migrations..."
 npx prisma migrate deploy --skip-generate 2>&1 | grep -v "already exists" || true

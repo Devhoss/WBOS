@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateWarehouse } from "@/domains/warehouses/actions/activate-warehouse";
 import { archiveWarehouse } from "@/domains/warehouses/actions/archive-warehouse";
 import { deleteWarehouse } from "@/domains/warehouses/actions/delete-warehouse";
@@ -25,6 +26,8 @@ export function WarehouseTable({ warehouses, archived }: {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WarehouseRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const editingWarehouse = [...warehouses, ...archived].find((w) => w.id === editingId) ?? null;
 
@@ -33,6 +36,13 @@ export function WarehouseTable({ warehouses, archived }: {
     const result = await action();
     setFeedback(result.ok ? msg : result.message ?? "Unable to update warehouse.");
     if (result.ok) router.refresh();
+  }
+
+  async function handleDelete(w: WarehouseRow) {
+    setDeleting(true);
+    await runAction(() => deleteWarehouse({ id: w.id }), "Warehouse deleted.");
+    setDeleting(false);
+    setDeleteTarget(null);
   }
 
   if (warehouses.length === 0 && archived.length === 0) {
@@ -71,7 +81,7 @@ export function WarehouseTable({ warehouses, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(w.id) },
                     { label: "Archive", onClick: () => void runAction(() => archiveWarehouse({ id: w.id }), "Warehouse archived.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${w.name}? This cannot be undone if the warehouse has no related stock.`)) void runAction(() => deleteWarehouse({ id: w.id }), "Warehouse deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(w) },
                   ]} />
                 </td>
               </tr>
@@ -90,7 +100,7 @@ export function WarehouseTable({ warehouses, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(w.id) },
                     { label: "Activate", onClick: () => void runAction(() => activateWarehouse({ id: w.id }), "Warehouse activated.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${w.name}? This cannot be undone if the warehouse has no related stock.`)) void runAction(() => deleteWarehouse({ id: w.id }), "Warehouse deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(w) },
                   ]} />
                 </td>
               </tr>
@@ -111,6 +121,15 @@ export function WarehouseTable({ warehouses, archived }: {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete warehouse"
+        description={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone if the warehouse has no related stock.` : undefined}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </section>
   );
 }

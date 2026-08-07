@@ -199,7 +199,7 @@ describe("BackupService", () => {
     const [pkg] = await service.listBackups();
     await service.restoreBackup(makeContext(), pkg.fileName, "RESTORE");
 
-    const pgRestoreCall = runMock.mock.calls.find(([cmd, args]) => cmd === "pg_restore" && !args.includes("--version"));
+    const pgRestoreCall = runMock.mock.calls.find(([cmd, args]) => cmd === "pg_restore" && !args.includes("--version") && !args.includes("--list"));
     expect(pgRestoreCall).toBeDefined();
     expect(pgRestoreCall![1].join(" ")).not.toContain("?schema=public");
     expect(pgRestoreCall![1]).toContain("-h");
@@ -238,7 +238,7 @@ describe("BackupService", () => {
 
     await service.restoreBackup(makeContext(), pkg.fileName, "RESTORE");
 
-    const pgRestore = runMock.mock.calls.find(([cmd, args]) => cmd === "pg_restore" && !args.includes("--version"));
+    const pgRestore = runMock.mock.calls.find(([cmd, args]) => cmd === "pg_restore" && !args.includes("--version") && !args.includes("--list"));
     expect(pgRestore).toBeDefined();
     expect(pgRestore![1]).toContain("--clean");
 
@@ -250,6 +250,42 @@ describe("BackupService", () => {
 
   it("rejects restore of an unknown package", async () => {
     await expect(service.restoreBackup(makeContext(), "wbos-backup-doesnotexist.tar.gz", "RESTORE")).rejects.toBeInstanceOf(BusinessError);
+  });
+
+  it("verifies a package: manifest, dump readability, uploads archive", async () => {
+    await service.createBackup(makeContext());
+    const [pkg] = await service.listBackups();
+
+    const result = await service.verifyPackage(pkg.fileName);
+    expect(result.ok).toBe(true);
+    expect(result.checks.databaseDumpReadable).toBe(true);
+    expect(result.checks.uploadsArchiveReadable).toBe(true);
+    expect(result.checks.manifest).toBe("valid");
+  });
+
+  it("deletes a corrupt package at creation time when verification fails", async () => {
+    runMock.mockImplementation(async (cmd: string, args: string[]) => {
+      if (cmd === "pg_dump") {
+        if (args.includes("--version")) return { stdout: "pg_dump 16", stderr: "" };
+        const dumpPath = args[args.indexOf("-f") + 1];
+        await mkdir(join(dumpPath, ".."), { recursive: true });
+        await writeFile(dumpPath, "PGDUMP");
+        return { stdout: "", stderr: "" };
+      }
+      if (cmd === "pg_restore") {
+        if (args.includes("--version")) return { stdout: "pg_restore 16", stderr: "" };
+        if (args.includes("--list")) throw new Error("could not read dump");
+        return { stdout: "", stderr: "" };
+      }
+      if (cmd === "tar") {
+        if (args.includes("--version")) return { stdout: "tar 3.1", stderr: "" };
+        return realTar("tar", args);
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    await expect(service.createBackup(makeContext())).rejects.toThrow(/could not be read/);
+    expect(await service.listBackups()).toHaveLength(0);
   });
 
   it("restores uploads into the correct storage location", async () => {

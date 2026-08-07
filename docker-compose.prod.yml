@@ -1,0 +1,91 @@
+# Production deployment stack.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Requires a `wbos-prod` external network and a `.env` with real secrets.
+# Postgres runs as a service in this stack (volume-backed), and backups are
+# synced off-host by scripts/sync-backups.sh on the host cron.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wbos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wbos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-wbos}
+    volumes:
+      - wbos_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wbos} -d ${POSTGRES_DB:-wbos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - wbos-prod
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    image: ghcr.io/devhoss/wbos:latest
+    container_name: wbos-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+    ports:
+      - "3005:3000"
+
+    env_file:
+      - .env
+
+    environment:
+      # DATABASE_URL must point at the db service: postgresql://wbos:***@db:5432/wbos?schema=public
+      INTERNAL_APP_URL: http://127.0.0.1:3000
+      WBOS_STORAGE_ROOT: /app/storage
+      WBOS_BACKUP_DIR: /app/backups
+
+    volumes:
+      - wbos_storage:/app/storage
+      - wbos_backups:/app/backups
+
+    networks:
+      - wbos-prod
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+        reservations:
+          cpus: "0.25"
+          memory: 512m
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  wbos_db_data:
+  wbos_storage:
+  wbos_backups:
+
+networks:
+  wbos-prod:
+    external: true

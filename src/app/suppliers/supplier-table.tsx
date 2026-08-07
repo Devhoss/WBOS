@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateSupplier } from "@/domains/suppliers/actions/activate-supplier";
 import { archiveSupplier } from "@/domains/suppliers/actions/archive-supplier";
 import { deleteSupplier } from "@/domains/suppliers/actions/delete-supplier";
@@ -29,6 +30,8 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SupplierRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!editingId) return;
@@ -46,6 +49,13 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
     const result = await action();
     setFeedback(result.ok ? msg : result.message ?? "Unable to update supplier.");
     if (result.ok) router.refresh();
+  }
+
+  async function handleDelete(s: SupplierRow) {
+    setDeleting(true);
+    await runAction(() => deleteSupplier({ id: s.id }), "Supplier deleted.");
+    setDeleting(false);
+    setDeleteTarget(null);
   }
 
   if (suppliers.length === 0 && archived.length === 0) {
@@ -84,7 +94,7 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(s.id) },
                     { label: "Archive", onClick: () => void runAction(() => archiveSupplier({ id: s.id }), "Supplier archived.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${s.name}? This cannot be undone if the supplier has no related records.`)) void runAction(() => deleteSupplier({ id: s.id }), "Supplier deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(s) },
                   ]} />
                 </td>
               </tr>
@@ -105,7 +115,7 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(s.id) },
                     { label: "Activate", onClick: () => void runAction(() => activateSupplier({ id: s.id }), "Supplier activated.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${s.name}? This cannot be undone if the supplier has no related records.`)) void runAction(() => deleteSupplier({ id: s.id }), "Supplier deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(s) },
                   ]} />
                 </td>
               </tr>
@@ -126,6 +136,15 @@ export function SupplierTable({ suppliers, archived }: { suppliers: SupplierRow[
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete supplier"
+        description={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone if the supplier has no related records.` : undefined}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </section>
   );
 }

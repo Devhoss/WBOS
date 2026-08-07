@@ -21,7 +21,7 @@ export async function POST(
     if (error instanceof BusinessError) {
       const status =
         error.code === "TASK_NOT_FOUND" ? 404 :
-        error.code === "TASK_CONFLICT" || error.code === "TASK_INVALID_STATUS" || error.code === "TASK_LINES_INCOMPLETE" ? 409 :
+        error.code === "TASK_CONFLICT" || error.code === "TASK_INVALID_STATUS" || error.code === "TASK_LINES_INCOMPLETE" || error.code === "TASK_NOT_AVAILABLE_YET" ? 409 :
         error.code === "MISSING_UPDATED_AT" || error.code === "INVALID_UPDATED_AT" ? 400 :
         403;
       return NextResponse.json({ error: error.message, code: error.code }, { status });

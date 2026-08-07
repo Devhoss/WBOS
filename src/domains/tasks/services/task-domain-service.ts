@@ -11,6 +11,7 @@ import type { AuthenticatedRequestContext } from "@/infrastructure/request/authe
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { BusinessCalendar } from "@/lib/business-calendar";
+import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
 import { TaskRepository, type TaskFilters } from "../repositories/task-repository";
 
 export type TaskSummary = {
@@ -89,6 +90,7 @@ export class TaskDomainService {
     private readonly shipmentService = new ShipmentService(),
     private readonly documents = new DocumentNumberService(),
     private readonly activityLogs = new ActivityLogRepository(),
+    private readonly notifications = createNotificationService(),
   ) {}
 
   /**
@@ -101,14 +103,36 @@ export class TaskDomainService {
    * event handler once that infrastructure exists.
    */
   async ensurePromotedTasks(organizationId: string, scheduleBoundary: Date): Promise<void> {
-    await prisma.task.updateMany({
-      where: {
-        organizationId,
-        status: "SCHEDULED",
-        dueAt: { lt: scheduleBoundary },
-      },
-      data: { status: "READY" },
-    });
+    const promoted = await this.tasks.promoteDueTasks(organizationId, scheduleBoundary);
+    if (promoted.length === 0) return;
+
+    const soIds = promoted
+      .filter((t) => t.referenceType === "SALES_ORDER" && t.referenceId)
+      .map((t) => t.referenceId);
+    const soMap = new Map<string, string>();
+    if (soIds.length > 0) {
+      const orders = await prisma.salesOrder.findMany({
+        where: { organizationId, id: { in: soIds } },
+        select: { id: true, soNumber: true },
+      });
+      for (const order of orders) soMap.set(order.id, order.soNumber);
+    }
+
+    for (const task of promoted) {
+      if (!task.assignedToId) continue;
+      try {
+        await this.notifications.notifyTaskAvailable(
+          { organizationId, userId: task.assignedToId },
+          {
+            taskNumber: task.taskNumber,
+            soNumber: soMap.get(task.referenceId) ?? null,
+            link: task.id,
+          },
+        );
+      } catch (error) {
+        console.error(`[promote] Failed to notify assignee for task ${task.id}:`, error);
+      }
+    }
   }
 
   async createFromShipment(
@@ -232,7 +256,13 @@ export class TaskDomainService {
   ): Promise<ComposedTaskDetail> {
     const task = await this.tasks.findById(context.organizationId, taskId);
     if (!task) throw new BusinessError("Task not found.", "TASK_NOT_FOUND");
-    if (task.status !== "READY" && task.status !== "SCHEDULED") throw new BusinessError("Task must be in READY or SCHEDULED status to start.", "TASK_INVALID_STATUS");
+    if (task.status === "SCHEDULED") {
+      throw new BusinessError(
+        "This task is scheduled and not available yet. It becomes available at its scheduled time.",
+        "TASK_NOT_AVAILABLE_YET",
+      );
+    }
+    if (task.status !== "READY") throw new BusinessError("Task must be in READY status to start.", "TASK_INVALID_STATUS");
 
     const now = new Date();
     await this.tasks.updateStatusWithTimestamp(
@@ -414,6 +444,58 @@ export class TaskDomainService {
       },
     });
 
+    return composed;
+  }
+
+  async reschedule(
+    context: AuthenticatedRequestContext,
+    taskId: string,
+    dueAt: Date,
+    optimisticUpdatedAt: Date,
+  ): Promise<ComposedTaskDetail> {
+    if (isNaN(dueAt.getTime())) {
+      throw new BusinessError("Invalid scheduled date/time.", "INVALID_DUE_AT");
+    }
+
+    const task = await this.tasks.findById(context.organizationId, taskId);
+    if (!task) throw new BusinessError("Task not found.", "TASK_NOT_FOUND");
+    if (task.status !== "SCHEDULED" && task.status !== "READY") {
+      throw new BusinessError("Only scheduled or ready tasks can be rescheduled.", "TASK_INVALID_STATUS");
+    }
+
+    const calendar = new BusinessCalendar(context.organization.timezone);
+    const isFuture = calendar.isAfterBusinessDay(dueAt);
+    const newStatus = isFuture ? "SCHEDULED" : "READY";
+
+    await this.tasks.updateSchedule(
+      context.organizationId,
+      taskId,
+      dueAt,
+      newStatus,
+      optimisticUpdatedAt,
+    );
+
+    const previousDueAt = task.dueAt;
+    const wasScheduled = task.status === "SCHEDULED";
+    const becameActive = wasScheduled && newStatus === "READY";
+
+    await this.activityLogs.create({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      action: "TASK_RESCHEDULED",
+      entityType: "Task",
+      entityId: taskId,
+      summary: `Task ${task.taskNumber} rescheduled by ${context.user?.name ?? "Unknown user"}${becameActive ? " — now active" : ""}`,
+      metadata: {
+        taskNumber: task.taskNumber,
+        taskType: task.type,
+        previousDueAt: previousDueAt ? previousDueAt.toISOString() : null,
+        newDueAt: dueAt.toISOString(),
+        newStatus,
+      },
+    });
+
+    const composed = (await this.composeDetail(context.organizationId, taskId))!;
     return composed;
   }
 

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateCustomer } from "@/domains/customers/actions/activate-customer";
 import { archiveCustomer } from "@/domains/customers/actions/archive-customer";
 import { deleteCustomer } from "@/domains/customers/actions/delete-customer";
@@ -32,6 +33,8 @@ export function CustomerTable({ customers, archived }: {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!editingId) return;
@@ -49,6 +52,13 @@ export function CustomerTable({ customers, archived }: {
     const result = await action();
     setFeedback(result.ok ? msg : result.message ?? "Unable to update customer.");
     if (result.ok) router.refresh();
+  }
+
+  async function handleDelete(c: CustomerRow) {
+    setDeleting(true);
+    await runAction(() => deleteCustomer({ id: c.id }), "Customer deleted.");
+    setDeleting(false);
+    setDeleteTarget(null);
   }
 
   if (customers.length === 0 && archived.length === 0) {
@@ -95,7 +105,7 @@ export function CustomerTable({ customers, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(c.id) },
                     { label: "Archive", onClick: () => void runAction(() => archiveCustomer({ id: c.id }), "Customer archived.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${c.name}? This cannot be undone if the customer has no related orders.`)) void runAction(() => deleteCustomer({ id: c.id }), "Customer deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(c) },
                   ]} />
                 </td>
               </tr>
@@ -122,7 +132,7 @@ export function CustomerTable({ customers, archived }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(c.id) },
                     { label: "Activate", onClick: () => void runAction(() => activateCustomer({ id: c.id }), "Customer activated.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${c.name}? This cannot be undone if the customer has no related orders.`)) void runAction(() => deleteCustomer({ id: c.id }), "Customer deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(c) },
                   ]} />
                 </td>
               </tr>
@@ -143,6 +153,15 @@ export function CustomerTable({ customers, archived }: {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete customer"
+        description={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone if the customer has no related orders.` : undefined}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </section>
   );
 }

@@ -6,10 +6,29 @@ type EventContext = {
   userId: string;
 };
 
+export type TaskNotificationRef = {
+  taskNumber: string;
+  soNumber?: string | null;
+  link?: string | null;
+};
+
+export type TaskScheduledNotificationRef = TaskNotificationRef & {
+  dueAt: Date;
+  timezone: string;
+};
+
+export type ShipmentNotificationRef = {
+  shipmentNumber: string;
+  soNumber?: string | null;
+  link?: string | null;
+};
+
 function toPayload(type: string, link: string | null | undefined): PushPayload {
   switch (type) {
     case "TASK_ASSIGNED":
+    case "TASK_SCHEDULED":
     case "TASK_COMPLETED":
+    case "TASK_AVAILABLE":
       return { type, entityType: "task", entityId: link ?? "" };
     case "SHIPMENT_READY":
     case "DELIVERY_COMPLETED":
@@ -27,6 +46,7 @@ export class NotificationService {
 
   async create(input: CreateNotificationInput) {
     const notification = await this.repo.create(input);
+    await this.repo.prune(input.organizationId, input.userId);
 
     if (this.pushProvider) {
       this.pushProvider
@@ -47,6 +67,7 @@ export class NotificationService {
   }
 
   async listByUser(organizationId: string, userId: string, limit?: number) {
+    await this.repo.prune(organizationId, userId);
     return this.repo.listByUser(organizationId, userId, limit);
   }
 
@@ -62,47 +83,110 @@ export class NotificationService {
     return this.repo.markAllAsRead(organizationId, userId);
   }
 
-  async notifyTaskAssigned(ctx: EventContext, taskNumber: string, link?: string | null) {
+  async clearRead(organizationId: string, userId: string) {
+    return this.repo.deleteRead(organizationId, userId);
+  }
+
+  async deleteById(organizationId: string, userId: string, id: string) {
+    return this.repo.deleteById(organizationId, userId, id);
+  }
+
+  async notifyTaskAssigned(ctx: EventContext, ref: TaskNotificationRef) {
     await this.create({
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      title: "New Pick Task",
-      body: `Task ${taskNumber} has been assigned to you.`,
+      title: "New Pick Order",
+      body: `${this.orderLabel(ref)} is ready for picking.`,
       type: "TASK_ASSIGNED",
-      link: link ?? undefined,
+      link: ref.link ?? undefined,
     });
   }
 
-  async notifyShipmentReady(ctx: EventContext, shipmentNumber: string, link?: string | null) {
+  async notifyShipmentReady(ctx: EventContext, ref: ShipmentNotificationRef) {
     await this.create({
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      title: "Shipment Ready",
-      body: `Shipment ${shipmentNumber} is loaded and ready for delivery.`,
+      title: "Delivery Ready",
+      body: `Shipment ${ref.shipmentNumber} is loaded and ready for delivery.`,
       type: "SHIPMENT_READY",
-      link: link ?? undefined,
+      link: ref.link ?? undefined,
     });
   }
 
-  async notifyDeliveryCompleted(ctx: EventContext, shipmentNumber: string, link?: string | null) {
+  async notifyDeliveryCompleted(ctx: EventContext, ref: ShipmentNotificationRef) {
     await this.create({
       organizationId: ctx.organizationId,
       userId: ctx.userId,
       title: "Delivery Completed",
-      body: `Shipment ${shipmentNumber} has been delivered.`,
+      body: `Shipment ${ref.shipmentNumber} has been delivered.`,
       type: "DELIVERY_COMPLETED",
-      link: link ?? undefined,
+      link: ref.link ?? undefined,
     });
   }
 
-  async notifyTaskCompleted(ctx: EventContext, taskNumber: string, link?: string | null) {
+  async notifyTaskCompleted(ctx: EventContext, ref: TaskNotificationRef) {
     await this.create({
       organizationId: ctx.organizationId,
       userId: ctx.userId,
-      title: "Task Completed",
-      body: `Task ${taskNumber} has been completed.`,
+      title: "Picking Completed",
+      body: `${this.orderLabel(ref)} has been picked.`,
       type: "TASK_COMPLETED",
-      link: link ?? undefined,
+      link: ref.link ?? undefined,
     });
+  }
+
+  async notifyTaskAvailable(ctx: EventContext, ref: TaskNotificationRef) {
+    await this.create({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      title: "Order Ready",
+      body: `${this.orderLabel(ref)} is now ready for picking.`,
+      type: "TASK_AVAILABLE",
+      link: ref.link ?? undefined,
+    });
+  }
+
+  async notifyTaskScheduled(ctx: EventContext, ref: TaskScheduledNotificationRef) {
+    await this.create({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+      title: "Scheduled Pick Order",
+      body: `${this.orderLabel(ref)} is scheduled for ${this.formatScheduledTime(ref.dueAt, ref.timezone)}.`,
+      type: "TASK_SCHEDULED",
+      link: ref.link ?? undefined,
+    });
+  }
+
+  private orderLabel(ref: { soNumber?: string | null; taskNumber?: string }): string {
+    return ref.soNumber ? `Order ${ref.soNumber}` : `Task ${ref.taskNumber}`;
+  }
+
+  private formatScheduledTime(dueAt: Date, timezone: string): string {
+    const dayFmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const dateKey = dayFmt.format(dueAt);
+    const todayKey = dayFmt.format(new Date());
+    const time = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(dueAt);
+
+    if (dateKey === todayKey) return `today at ${time}`;
+
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    if (dateKey === dayFmt.format(tomorrow)) return `tomorrow at ${time}`;
+
+    const dateFmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    return `${dateFmt.format(dueAt)} at ${time}`;
   }
 }

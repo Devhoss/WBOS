@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionMenu } from "@/components/action-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { activateCategory } from "@/domains/categories/actions/activate-category";
 import { archiveCategory } from "@/domains/categories/actions/archive-category";
 import { deleteCategory } from "@/domains/categories/actions/delete-category";
@@ -26,6 +27,8 @@ export function CategoryTable({ categories, archived, allCategories }: {
   const router = useRouter();
   const [feedback, setFeedback] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CategoryRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const editingCategory = [...categories, ...archived].find((c) => c.id === editingId) ?? null;
 
@@ -34,6 +37,13 @@ export function CategoryTable({ categories, archived, allCategories }: {
     const result = await action();
     setFeedback(result.ok ? msg : result.message ?? "Unable to update category.");
     if (result.ok) router.refresh();
+  }
+
+  async function handleDelete(c: CategoryRow) {
+    setDeleting(true);
+    await runAction(() => deleteCategory({ id: c.id }), "Category deleted.");
+    setDeleting(false);
+    setDeleteTarget(null);
   }
 
   if (categories.length === 0 && archived.length === 0) {
@@ -69,7 +79,7 @@ export function CategoryTable({ categories, archived, allCategories }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(c.id) },
                     { label: "Archive", onClick: () => void runAction(() => archiveCategory({ id: c.id }), "Category archived.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${c.name}? This cannot be undone if the category has no related records.`)) void runAction(() => deleteCategory({ id: c.id }), "Category deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(c) },
                   ]} />
                 </td>
               </tr>
@@ -88,7 +98,7 @@ export function CategoryTable({ categories, archived, allCategories }: {
                   <ActionMenu items={[
                     { label: "Edit", onClick: () => setEditingId(c.id) },
                     { label: "Activate", onClick: () => void runAction(() => activateCategory({ id: c.id }), "Category activated.") },
-                    { label: "Delete", variant: "destructive", onClick: () => { if (window.confirm(`Delete ${c.name}? This cannot be undone if the category has no related records.`)) void runAction(() => deleteCategory({ id: c.id }), "Category deleted."); } },
+                    { label: "Delete", variant: "destructive", onClick: () => setDeleteTarget(c) },
                   ]} />
                 </td>
               </tr>
@@ -109,6 +119,15 @@ export function CategoryTable({ categories, archived, allCategories }: {
           </div>
         </div>
       ) : null}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete category"
+        description={deleteTarget ? `Delete ${deleteTarget.name}? This cannot be undone if the category has no related records.` : undefined}
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={() => { if (deleteTarget) void handleDelete(deleteTarget); }}
+      />
     </section>
   );
 }

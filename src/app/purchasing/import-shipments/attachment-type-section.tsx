@@ -5,6 +5,7 @@ import { FileText, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { deleteAttachmentAction } from "@/domains/attachments/actions/delete-attachment";
 import { uploadAttachmentAction } from "@/domains/attachments/actions/upload-attachment";
 
@@ -54,6 +55,7 @@ export function AttachmentTypeSection({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   async function handleUpload(formData: FormData) {
     setError(null);
@@ -75,7 +77,6 @@ export function AttachmentTypeSection({
   }
 
   async function handleDelete(attachmentId: string) {
-    if (!window.confirm("Remove this attachment?")) return;
     setError(null);
     setIsPending(true);
     try {
@@ -83,11 +84,13 @@ export function AttachmentTypeSection({
       if (!result.ok) {
         setError(result.message ?? "Unable to remove attachment.");
         setIsPending(false);
+        setConfirmDelete(null);
         return;
       }
       router.refresh();
     } catch { setError("An unexpected error occurred."); }
     setIsPending(false);
+    setConfirmDelete(null);
   }
 
   const grouped = TYPE_OPTIONS.map((opt) => ({
@@ -148,7 +151,7 @@ export function AttachmentTypeSection({
                         {(att.sizeBytes / 1024).toFixed(0)} KB{att.uploadedByName ? ` · ${att.uploadedByName}` : ""}
                       </span>
                     </div>
-                    <button className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2 text-xs text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950" disabled={isPending} type="button" onClick={() => handleDelete(att.id)}>
+                    <button className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2 text-xs text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950" disabled={isPending} type="button" onClick={() => setConfirmDelete(att.id)}>
                       <Trash2 className="size-3.5" />Remove
                     </button>
                   </li>
@@ -163,6 +166,15 @@ export function AttachmentTypeSection({
           <p className="text-xs text-muted-foreground">No documents yet.</p>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+        title="Remove attachment"
+        description="Remove this attachment?"
+        confirmLabel="Remove"
+        busy={isPending}
+        onConfirm={() => { if (confirmDelete) void handleDelete(confirmDelete); }}
+      />
     </section>
   );
 }

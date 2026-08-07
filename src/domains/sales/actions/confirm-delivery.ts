@@ -35,8 +35,7 @@ export async function confirmDeliveryAction(input: unknown) {
     if (shipment) {
       await createNotificationService().notifyDeliveryCompleted(
         { organizationId: context.organizationId, userId: context.userId },
-        shipment.shipmentNumber,
-        shipment.id,
+        { shipmentNumber: shipment.shipmentNumber, soNumber: shipment.salesOrder?.soNumber, link: shipment.id },
       );
     }
 

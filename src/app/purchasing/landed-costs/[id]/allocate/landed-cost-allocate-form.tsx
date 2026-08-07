@@ -4,6 +4,7 @@ import { CheckCircle } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { postLandedCost } from "@/domains/purchasing/actions/post-landed-cost";
 import { saveLandedCostAllocations } from "@/domains/purchasing/actions/save-landed-cost-allocations";
 
@@ -132,6 +133,7 @@ export function LandedCostAllocateForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmPost, setConfirmPost] = useState(false);
   const [basis, setBasis] = useState(allocationBasis);
   const [manualCells, setManualCells] = useState<Cell[]>(
     initialCells.length > 0
@@ -193,9 +195,9 @@ export function LandedCostAllocateForm({
 
   async function post() {
     setMessage(null);
-    if (!window.confirm(`Post ${lcNumber}? This revalues on-hand inventory and cannot be reversed except by cancellation.`)) return;
     const result = await postLandedCost({ id });
-    if (!result.ok) { setMessage(result.message ?? null); return; }
+    if (!result.ok) { setMessage(result.message ?? null); setConfirmPost(false); return; }
+    setConfirmPost(false);
     router.refresh();
     router.push(`/purchasing/landed-costs/${id}`);
   }
@@ -215,7 +217,7 @@ export function LandedCostAllocateForm({
           className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
           disabled={isPending}
           type="button"
-          onClick={post}
+          onClick={() => setConfirmPost(true)}
         >
           <CheckCircle className="size-4" />
           {isPending ? "Posting..." : "Post Landed Cost"}
@@ -361,6 +363,17 @@ export function LandedCostAllocateForm({
           </p>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmPost}
+        onOpenChange={setConfirmPost}
+        title="Post landed cost"
+        description={`Post ${lcNumber}? This revalues on-hand inventory and cannot be reversed except by cancellation.`}
+        confirmLabel="Post"
+        destructive={false}
+        busy={isPending}
+        onConfirm={() => startTransition(() => void post())}
+      />
     </section>
   );
 }

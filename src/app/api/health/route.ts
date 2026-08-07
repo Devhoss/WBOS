@@ -1,13 +1,16 @@
-import { accessSync, existsSync, constants, readdirSync, statSync } from "fs";
+import { accessSync, existsSync, constants, readdirSync, statSync, statfsSync } from "fs";
 import { join } from "path";
 
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { BackupService } from "@/domains/backups/services/backup-service";
 
 export const dynamic = "force-dynamic";
 
 const startTime = Date.now();
+
+const BACKUP_STALENESS_HOURS = 48;
 
 export async function GET() {
   const checks: Record<string, unknown> = {};
@@ -65,15 +68,23 @@ export async function GET() {
   const uploadsDir = join(storageRoot, "uploads");
   storageChecks.uploads = existsSync(uploadsDir);
 
+  const disk = checkDiskSpace([storageRoot, process.env.WBOS_BACKUP_DIR ?? "./backups"]);
+  if (disk.some((d) => d.availablePercent !== null && d.availablePercent < 10)) {
+    healthy = false;
+  }
+  storageChecks.disk = disk;
   checks.storage = storageChecks;
 
   const backupsDir = process.env.WBOS_BACKUP_DIR ?? "./backups";
-  const backupTiers = ["daily", "weekly", "monthly", "yearly", "uploads"];
+  const backupChecks: Record<string, unknown> = {
+    root: backupsDir,
+  };
+
   const tierCounts: Record<string, number> = {};
   let totalBackupFiles = 0;
-  let latestBackupAge = Infinity;
+  let latestBackupMtime = 0;
 
-  for (const tier of backupTiers) {
+  for (const tier of ["daily", "weekly", "monthly", "yearly", "uploads"]) {
     const tierPath = join(backupsDir, tier);
     if (existsSync(tierPath)) {
       const files = readdirSync(tierPath).filter(
@@ -81,24 +92,55 @@ export async function GET() {
       );
       tierCounts[tier] = files.length;
       totalBackupFiles += files.length;
-      if (files.length > 0) {
-        const mtimes = files.map((f) => statSync(join(tierPath, f)).mtimeMs);
-        latestBackupAge = Math.min(latestBackupAge, ...mtimes);
+      for (const f of files) {
+        latestBackupMtime = Math.max(latestBackupMtime, statSync(join(tierPath, f)).mtimeMs);
       }
     } else {
       tierCounts[tier] = 0;
     }
   }
+  backupChecks.tiers = tierCounts;
+  backupChecks.totalFiles = totalBackupFiles;
 
-  checks.backups = {
-    root: backupsDir,
-    totalFiles: totalBackupFiles,
-    tiers: tierCounts,
-    latestAgeHours:
-      latestBackupAge < Infinity
-        ? Math.round((Date.now() - latestBackupAge) / 3600000)
-        : null,
-  };
+  const packagesDir = join(backupsDir, "packages");
+  let packageFiles: string[] = [];
+  if (existsSync(packagesDir)) {
+    packageFiles = readdirSync(packagesDir).filter(
+      (f) => f.startsWith("wbos-backup-") && f.endsWith(".tar.gz"),
+    );
+  }
+  backupChecks.packages = { count: packageFiles.length };
+
+  if (packageFiles.length > 0) {
+    const pkgMt = packageFiles
+      .map((f) => statSync(join(packagesDir, f)).mtimeMs)
+      .sort((a, b) => b - a)[0];
+    latestBackupMtime = Math.max(latestBackupMtime, pkgMt);
+  }
+
+  const latestAgeHours =
+    latestBackupMtime > 0 ? Math.round((Date.now() - latestBackupMtime) / 3600000) : null;
+  backupChecks.latestAgeHours = latestAgeHours;
+
+  const backupStale = latestAgeHours === null || latestAgeHours > BACKUP_STALENESS_HOURS;
+  backupChecks.stale = backupStale;
+  backupChecks.stalenessThresholdHours = BACKUP_STALENESS_HOURS;
+  if (backupStale) {
+    healthy = false;
+  }
+
+  const backupService = new BackupService();
+  const [toolChecks, status] = await Promise.all([
+    backupService.checkTools(),
+    backupService.getStatus(),
+  ]);
+  backupChecks.tools = toolChecks;
+  if (toolChecks.some((t) => !t.ok)) {
+    healthy = false;
+  }
+  backupChecks.lastRestoreTest = status.lastRestoreTest;
+
+  checks.backups = backupChecks;
 
   checks.environment = process.env.NODE_ENV ?? "development";
   checks.serverTime = new Date().toISOString();
@@ -107,4 +149,28 @@ export async function GET() {
     { healthy, ...checks },
     { status: healthy ? 200 : 503 },
   );
+}
+
+function checkDiskSpace(paths: string[]) {
+  return paths.map((p) => {
+    try {
+      const s = statfsSync(p);
+      const availablePercent =
+        s.bavail && s.blocks ? Math.round((s.bavail / s.blocks) * 100) : null;
+      return {
+        path: p,
+        freeBytes: s.bavail * s.bsize,
+        totalBytes: s.blocks * s.bsize,
+        availablePercent,
+      };
+    } catch (error) {
+      return {
+        path: p,
+        freeBytes: null,
+        totalBytes: null,
+        availablePercent: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
 }

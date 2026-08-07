@@ -2,34 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/infrastructure/database/prisma";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessCalendar } from "@/lib/business-calendar";
-import type { TaskStatus, CycleCountStatus, ShipmentStatus } from "@prisma/client";
+import type { TaskStatus, ShipmentStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
     const calendar = new BusinessCalendar(context.organization.timezone);
     const todayStart = calendar.startOfTodayUTC();
-    const tomorrowStart = calendar.startOfTomorrowUTC();
-
-    const activeStatuses: TaskStatus[] = ["READY", "IN_PROGRESS"];
 
     const [pickOrderTasks, deliveries, cycleCounts] = await Promise.all([
       prisma.task.findMany({
         where: {
           organizationId: context.organizationId,
           type: "PICK_ORDER",
-          OR: [
-            { status: { in: activeStatuses } },
-            { status: "SCHEDULED" as TaskStatus, dueAt: { lt: tomorrowStart } },
-          ],
+          status: "COMPLETED" as TaskStatus,
+          completedAt: { gte: todayStart },
         },
         include: { lines: true },
-        orderBy: { createdAt: "asc" },
+        orderBy: { completedAt: "desc" },
+        take: 20,
       }),
       prisma.shipment.findMany({
         where: {
           organizationId: context.organizationId,
-          status: { in: ["OUT_FOR_DELIVERY" as ShipmentStatus, "DELIVERED" as ShipmentStatus] },
+          status: "DELIVERED" as ShipmentStatus,
+          deliveredAt: { gte: todayStart },
         },
         include: {
           salesOrder: {
@@ -39,7 +36,7 @@ export async function GET(req: NextRequest) {
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { deliveredAt: "desc" },
         take: 20,
       }),
       prisma.cycleCount.findMany({
