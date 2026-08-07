@@ -78,6 +78,18 @@ WBOS is the single source of truth for every operational workflow — from purch
 - Purchasing reports
 - Customer and supplier reports
 
+### Notifications
+- In-app notification center with unread indicators and bulk actions (read all / clear read)
+- Task and shipment lifecycle notifications (assigned, scheduled, available, completed, shipment ready)
+- Optional Firebase Cloud Messaging push delivery for mobile clients
+- Retention pruning keeps the activity feed bounded
+
+### Backups & Restore
+- One-click backup creation — PostgreSQL dump + uploads archive + config/manifest
+- Timestamped backup packages with integrity verification
+- Download, restore, and diagnostics from the Settings UI
+- Runtime retention tiers (daily, weekly, monthly, yearly)
+
 ### Onboarding & UX
 - Guided first-run setup wizard (warehouses → products → customers → suppliers → orders)
 - Dismissible onboarding card that collapses into a compact progress banner
@@ -101,10 +113,10 @@ WBOS is the single source of truth for every operational workflow — from purch
 ## Technology Stack
 
 ### Frontend
-- **Next.js 15** (App Router)
+- **Next.js 16** (App Router)
 - **React 19**
 - **TypeScript**
-- **Tailwind CSS 4**
+- **Tailwind CSS 3**
 - **shadcn/ui** components
 
 ### Backend
@@ -259,7 +271,7 @@ The database schema is automatically migrated on container start via the entrypo
 | `BETTER_AUTH_SECRET` | Yes | Secret key for session encryption |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | No | Comma-separated list of additional origins to trust (for reverse proxy or development) |
 | `INTERNAL_APP_URL` | No | Internal URL for Playwright PDF generation (default: `http://127.0.0.1:3000`) |
-| `WBOS_STORAGE_ROOT` | No | Directory for uploaded files (default: `<cwd>/public`). Must be a persisted Docker volume. |
+| `WBOS_STORAGE_ROOT` | No | Directory for uploaded files and runtime data (default: `<cwd>/storage`). Must be a persisted Docker volume. |
 
 ### Reverse Proxy (Nginx Proxy Manager)
 
@@ -390,48 +402,83 @@ npx prisma studio # Database GUI (port 5555)
 
 ```
 docs/
-├── adr/                    # Architecture Decision Records
-├── PROJECT_BIBLE.md        # Complete project specification
-├── business-rules.md
-├── workflows.md
-├── domain-model.md
-├── database.md
+├── adr/                        # Architecture Decision Records
+├── accounting-principles.md
+├── alpha-test-checklist.md
 ├── architecture.md
+├── business-rules.md
 ├── coding-standards.md
-└── roadmap.md
+├── database.md
+├── deployment.md
+├── development-setup.md
+├── domain-model.md
+├── glossary.md
+├── inventory-architecture.md
+├── landed-costs-architecture.md
+├── phase-3-progress.md
+├── progress.md
+├── roadmap.md
+├── ui-guidelines.md
+└── workflows.md
 
 src/
-├── app/                    # Next.js App Router pages + API routes
-│   ├── sales/
-│   ├── purchasing/
+├── app/                        # Next.js App Router pages + API routes
+│   ├── api/                    # Route handlers (uploads, backups, /api/v1 for mobile)
+│   ├── audit/
+│   ├── categories/
+│   ├── credit-notes/
+│   ├── customers/
+│   ├── health/
 │   ├── inventory/
 │   ├── invoices/
-│   ├── reports/
-│   ├── customers/
-│   ├── suppliers/
-│   ├── warehouses/
-│   ├── settings/
 │   ├── onboarding/
-│   └── api/
-├── components/             # Shared React components
-│   ├── ui/                 # shadcn/ui primitives
+│   ├── payments/
+│   ├── products/
+│   ├── purchasing/
+│   ├── quotations/
+│   ├── reports/
+│   ├── returns/
+│   ├── sales/
+│   ├── settings/
+│   ├── sign-in/
+│   ├── sign-up/
+│   ├── suppliers/
+│   ├── tasks/
+│   ├── units/
+│   └── warehouses/
+├── components/                 # Shared React components
+│   ├── ui/                     # shadcn/ui primitives
 │   ├── sidebar.tsx
 │   ├── app-shell.tsx
-│   ├── org-branding.tsx
-│   ├── onboarding-panel.tsx
-│   ├── empty-state.tsx
 │   └── ...
-├── domains/                # Business domains (DDD)
-│   ├── sales/
-│   ├── purchasing/
-│   ├── inventory/
+├── domains/                    # Business domains (DDD)
+│   ├── activity/
+│   ├── attachments/
+│   ├── backups/
+│   ├── categories/
+│   ├── credit-notes/
 │   ├── customers/
+│   ├── documents/
+│   ├── import-shipments/
+│   ├── inventory/
+│   ├── notifications/
+│   ├── organization/
+│   ├── products/
+│   ├── purchasing/
+│   ├── quotations/
+│   ├── reports/
+│   ├── returns/
+│   ├── sales/
+│   ├── settings/
+│   ├── supplier-invoices/
 │   ├── suppliers/
-│   ├── warehouses/
-│   └── settings/
-├── shared/                 # Shared utilities & errors
-├── infrastructure/         # Framework concerns (auth, DB, request context)
-└── lib/                    # General utilities
+│   ├── tasks/
+│   ├── units/
+│   └── warehouses/
+├── infrastructure/             # Framework concerns (auth, DB, storage, notifications, request context)
+├── shared/                     # Shared utilities & errors
+├── test/                       # Vitest tests
+└── lib/                        # General utilities
 ```
 
 ---
@@ -454,13 +501,15 @@ Completed modules:
 - ✅ Responsive layout with mobile navigation
 - ✅ Production polish: error boundaries, empty states, onboarding UX, favicon set
 - ✅ Docker self-hosting with automated DB migrations
+- ✅ Notifications: task & shipment lifecycle alerts (in-app + optional Firebase push)
+- ✅ Backups: one-click backup, download, restore, and diagnostics
+- ✅ Public REST API (`/api/v1`) consumed by the mobile companion
+- ✅ WBOS Mobile companion app (React Native + Expo) with barcode scanning
 
 Planned:
-- Barcode scanning
-- Mobile warehouse mode (PWA)
 - AI purchasing assistant & demand forecasting
-- Public REST API
 - Third-party integrations & plugin system
+- Remaining mobile phases (delivery, inventory, offline sync)
 
 ---
 
