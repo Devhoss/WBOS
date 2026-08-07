@@ -3,11 +3,11 @@ node_modules/
 
 # Next.js
 .next/
-out/
+/out/
 
 # Build
-dist/
-coverage/
+/dist/
+/coverage/
 *.tsbuildinfo
 
 # Environment
@@ -33,5 +33,5 @@ Thumbs.db
 
 # Firebase
 .secrets/
-secrets/
+/secrets/
 firebase-admin*.json
