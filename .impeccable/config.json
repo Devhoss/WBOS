@@ -1,0 +1,20 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "10px",
+        "createdAt": "2026-08-09T17:56:49.301Z",
+        "reason": "10px used in SVG chart annotations and micro-UI badge counters; contextually appropriate below the HTML type ramp"
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "11px",
+        "createdAt": "2026-08-09T17:57:25.169Z",
+        "reason": "11px used in SVG chart annotations; contextually appropriate below the HTML type ramp"
+      }
+    ]
+  }
+}

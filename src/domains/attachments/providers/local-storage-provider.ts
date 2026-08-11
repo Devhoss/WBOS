@@ -4,6 +4,8 @@ import { existsSync } from "fs";
 
 import { uid } from "@/lib/uid";
 
+import { assertStorageCapacity } from "@/infrastructure/storage/assert-capacity";
+
 import type { SaveFileInput, StorageProvider, StorageProviderName, StoredFileMeta } from "./storage-provider";
 
 function sanitizeSegment(value: string): string {
@@ -40,6 +42,8 @@ export class LocalStorageProvider implements StorageProvider {
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }
+
+    assertStorageCapacity(this.storageRoot, input.data.byteLength);
 
     await writeFile(absolutePath, input.data);
     return { storageKey, sizeBytes: input.data.byteLength };

@@ -1,9 +1,24 @@
 import { prisma } from "@/infrastructure/database/prisma";
 import { InventoryValuationService } from "@/domains/inventory/services/inventory-valuation-service";
-import { StockBalanceService } from "@/domains/inventory/services/stock-balance-service";
 
 export type TrendPoint = { label: string; value: number };
 export type TopItem = { name: string; value: number };
+export type StatusCount = { status: string; count: number };
+export type PipelineStatus = {
+  salesOrders: StatusCount[];
+  purchaseOrders: StatusCount[];
+  shipments: StatusCount[];
+};
+export type UnpaidInvoiceSummary = { totalOutstanding: number; count: number };
+export type DelayedItem = {
+  type: "po" | "so";
+  number: string;
+  name: string;
+  expectedDate: Date;
+  status: string;
+  amount: number;
+};
+export type LowStockItem = { name: string; quantity: number };
 
 export class DashboardService {
   async getOperationalSummary(organizationId: string) {
@@ -13,8 +28,6 @@ export class DashboardService {
       pendingShipmentCount,
       unpaidInvoiceCount,
       totalUnpaidResult,
-      openPOs,
-      pendingShipments,
       unpaidInvoices,
       recentActivity,
       salesToday,
@@ -22,7 +35,7 @@ export class DashboardService {
       outstandingResult,
       inventoryValueResult,
       overdueCount,
-      lowStockCountResult,
+      lowStockThreshold,
     ] = await Promise.all([
       prisma.product.count({
         where: { organizationId, archivedAt: null, status: { not: "ARCHIVED" } },
@@ -51,28 +64,6 @@ export class DashboardService {
           archivedAt: null,
         },
         _sum: { totalAmount: true, amountPaid: true },
-      }),
-      prisma.purchaseOrder.findMany({
-        where: {
-          organizationId,
-          status: { in: ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"] },
-          archivedAt: null,
-        },
-        select: {
-          id: true, poNumber: true, status: true, totalAmount: true,
-          supplier: { select: { name: true } },
-        },
-        orderBy: { orderedAt: "desc" },
-        take: 5,
-      }),
-      prisma.shipment.findMany({
-        where: { organizationId, status: { in: ["PENDING_PICK", "PICKING", "PICKED"] } },
-        select: {
-          id: true, shipmentNumber: true, status: true,
-          salesOrder: { select: { soNumber: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 5,
       }),
       prisma.invoice.findMany({
         where: {
@@ -124,9 +115,10 @@ export class DashboardService {
           dueDate: { lt: new Date() },
         },
       }),
-      this.getLowStockCount(organizationId, 10),
+      this._getLowStockThreshold(organizationId),
     ]);
 
+    const lowStockCountResult = await this._countLowStock(organizationId, lowStockThreshold);
     const totalUnpaid = Number(totalUnpaidResult._sum.totalAmount ?? 0) - Number(totalUnpaidResult._sum.amountPaid ?? 0);
     const outstandingTotal = Number(outstandingResult._sum.totalAmount ?? 0) - Number(outstandingResult._sum.amountPaid ?? 0);
 
@@ -139,40 +131,43 @@ export class DashboardService {
         inventoryValue: inventoryValueResult,
         overdueCustomers: overdueCount,
         lowStockItems: lowStockCountResult,
+        lowStockThreshold,
       },
-      openPOs,
-      pendingShipments,
       unpaidInvoices,
       recentActivity,
     };
   }
 
   async getSalesTrend(organizationId: string): Promise<TrendPoint[]> {
-    const ranges = Array.from({ length: 6 }, (_, i) => {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    const monthStart = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth(), 1);
+
+    const rows = await prisma.$queryRaw<{ month: Date; total: unknown }[]>`
+      SELECT DATE_TRUNC('month', "issuedAt") AS "month", SUM("totalAmount") AS "total"
+      FROM invoices
+      WHERE "organizationId" = ${organizationId}
+        AND "status" IN ('ISSUED', 'PAID', 'PARTIALLY_PAID')
+        AND "issuedAt" >= ${monthStart}
+      GROUP BY DATE_TRUNC('month', "issuedAt")
+      ORDER BY "month" ASC
+    `;
+
+    const byMonth = new Map<string, number>();
+    for (const row of rows) {
+      const key = new Date(row.month).toISOString().slice(0, 7);
+      byMonth.set(key, Number(row.total ?? 0));
+    }
+
+    return Array.from({ length: 6 }, (_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - (5 - i));
-      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
-      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      return { monthStart, monthEnd };
+      const key = d.toISOString().slice(0, 7);
+      return {
+        label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        value: byMonth.get(key) ?? 0,
+      };
     });
-
-    const results = await Promise.all(
-      ranges.map(({ monthStart, monthEnd }) =>
-        prisma.invoice.aggregate({
-          where: {
-            organizationId,
-            status: { in: ["ISSUED", "PAID", "PARTIALLY_PAID"] },
-            issuedAt: { gte: monthStart, lt: monthEnd },
-          },
-          _sum: { totalAmount: true },
-        }),
-      ),
-    );
-
-    return ranges.map(({ monthStart }, i) => ({
-      label: monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-      value: Number(results[i]._sum.totalAmount ?? 0),
-    }));
   }
 
   async getTopProducts(organizationId: string): Promise<TopItem[]> {
@@ -223,13 +218,150 @@ export class DashboardService {
     return new InventoryValuationService().totalValue(organizationId);
   }
 
-  private async getLowStockCount(organizationId: string, threshold: number): Promise<number> {
-    const balances = await new StockBalanceService().getStockBalancesDetail(organizationId);
-    const productOnHand = new Map<string, number>();
-    for (const balance of balances) {
-      const current = productOnHand.get(balance.productId) ?? 0;
-      productOnHand.set(balance.productId, current + Number(balance.onHand));
-    }
-    return Array.from(productOnHand.values()).filter((qty) => qty < threshold).length;
+  private async _getLowStockThreshold(organizationId: string): Promise<number> {
+    const settings = await prisma.businessSettings.findUnique({
+      where: { organizationId },
+      select: { lowStockThreshold: true },
+    });
+    return settings?.lowStockThreshold ?? 10;
+  }
+
+  private async _countLowStock(organizationId: string, threshold: number): Promise<number> {
+    // Uses product_cost (FIFO cost engine cache) instead of scanning all ledger entries.
+    // product_cost has a compound index on (organizationId, productId, warehouseId)
+    // so the groupBy is index-driven and O(distinct products), not O(all ledger rows).
+    const rows = await prisma.productCost.groupBy({
+      by: ["productId"],
+      where: { organizationId, totalQuantity: { gt: 0 } },
+      _sum: { totalQuantity: true },
+      having: { totalQuantity: { _sum: { lt: threshold } } },
+    });
+
+    return rows.length;
+  }
+
+  async getLowStockItems(organizationId: string, threshold?: number): Promise<LowStockItem[]> {
+    const resolvedThreshold = threshold ?? await this._getLowStockThreshold(organizationId);
+    type GroupResult = { productId: string; _sum: { totalQuantity: number | null } };
+    const rows = await prisma.productCost.groupBy({
+      by: ["productId"],
+      where: { organizationId, totalQuantity: { gt: 0 } },
+      _sum: { totalQuantity: true },
+      having: { totalQuantity: { _sum: { lt: resolvedThreshold } } },
+      orderBy: { _sum: { totalQuantity: "asc" } },
+      take: 5,
+    }) as unknown as GroupResult[];
+
+    const productIds = rows.map((r) => r.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true },
+    });
+    const nameMap = new Map(products.map((p) => [p.id, p.name]));
+
+    return rows.map((r) => ({
+      name: nameMap.get(r.productId) ?? "Unknown",
+      quantity: Number(r._sum.totalQuantity ?? 0),
+    }));
+  }
+
+  async getPipelineStatus(organizationId: string): Promise<PipelineStatus> {
+    const [soGroups, poGroups, shipmentGroups] = await Promise.all([
+      prisma.salesOrder.groupBy({
+        by: ["status"],
+        where: { organizationId, archivedAt: null },
+        _count: true,
+      }),
+      prisma.purchaseOrder.groupBy({
+        by: ["status"],
+        where: { organizationId, archivedAt: null },
+        _count: true,
+      }),
+      prisma.shipment.groupBy({
+        by: ["status"],
+        where: { organizationId },
+        _count: true,
+      }),
+    ]);
+
+    return {
+      salesOrders: soGroups.map((g) => ({ status: g.status, count: g._count })),
+      purchaseOrders: poGroups.map((g) => ({ status: g.status, count: g._count })),
+      shipments: shipmentGroups.map((g) => ({ status: g.status, count: g._count })),
+    };
+  }
+
+  async getUnpaidInvoiceSummary(organizationId: string): Promise<UnpaidInvoiceSummary> {
+    const result = await prisma.invoice.aggregate({
+      where: {
+        organizationId,
+        status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        archivedAt: null,
+      },
+      _sum: { totalAmount: true, amountPaid: true },
+      _count: true,
+    });
+
+    const totalOutstanding =
+      Number(result._sum.totalAmount ?? 0) - Number(result._sum.amountPaid ?? 0);
+
+    return { totalOutstanding, count: result._count };
+  }
+
+  async getDelayedItems(organizationId: string): Promise<DelayedItem[]> {
+    const now = new Date();
+
+    const [delayedPOs, delayedSOs] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where: {
+          organizationId,
+          archivedAt: null,
+          status: { in: ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED"] },
+          expectedDeliveryDate: { lt: now },
+        },
+        select: {
+          poNumber: true, status: true, totalAmount: true, expectedDeliveryDate: true,
+          supplier: { select: { name: true } },
+        },
+        orderBy: { expectedDeliveryDate: "asc" },
+        take: 5,
+      }),
+      prisma.salesOrder.findMany({
+        where: {
+          organizationId,
+          archivedAt: null,
+          status: { in: ["DRAFT", "PENDING_APPROVAL", "APPROVED", "READY_FOR_INVOICE"] },
+          expectedShipDate: { lt: now },
+        },
+        select: {
+          soNumber: true, status: true, totalAmount: true, expectedShipDate: true,
+          customer: { select: { name: true } },
+        },
+        orderBy: { expectedShipDate: "asc" },
+        take: 5,
+      }),
+    ]);
+
+    const items: DelayedItem[] = [
+      ...delayedPOs.map((po) => ({
+        type: "po" as const,
+        number: po.poNumber,
+        name: po.supplier.name,
+        expectedDate: po.expectedDeliveryDate!,
+        status: po.status,
+        amount: Number(po.totalAmount),
+      })),
+      ...delayedSOs.map((so) => ({
+        type: "so" as const,
+        number: so.soNumber,
+        name: so.customer.name,
+        expectedDate: so.expectedShipDate!,
+        status: so.status,
+        amount: Number(so.totalAmount),
+      })),
+    ];
+
+    items.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
+    return items.slice(0, 5);
   }
 }

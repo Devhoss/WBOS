@@ -54,9 +54,9 @@ case "$TARGET" in
     rsync -a --delete $EXTRA "$PACKAGES_DIR/" "$RSYNC_PATH/"
     ;;
   s3://*)
-    echo "--- Syncing via rclone ---"
+    echo "--- Syncing via rclone (sync = mirror, deletes removed files) ---"
     # shellcheck disable=SC2086
-    rclone copy --progress $EXTRA "$PACKAGES_DIR/" "$TARGET"
+    rclone sync --progress $EXTRA "$PACKAGES_DIR/" "$TARGET"
     ;;
   file://*)
     DEST="${TARGET#file://}"

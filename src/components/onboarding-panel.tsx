@@ -61,7 +61,7 @@ export function OnboardingPanel({
               <button
                 type="button"
                 onClick={handleSkip}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
                 aria-label="Dismiss"
               >
                 <X className="size-4" />
@@ -77,7 +77,14 @@ export function OnboardingPanel({
               {doneCount}/{total}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-2 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={doneCount}
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-label="Setup progress"
+          >
             <div
               className="h-full rounded-full bg-primary transition-all"
               style={{ width: `${(doneCount / total) * 100}%` }}
@@ -90,10 +97,10 @@ export function OnboardingPanel({
             <Link
               key={step.label}
               href={step.href}
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition hover:bg-muted"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
             >
               {step.done ? (
-                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
               ) : (
                 <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
                   {steps.indexOf(step) + 1}
@@ -116,7 +123,7 @@ export function OnboardingPanel({
               <Link
                 key={step.label}
                 href={step.href}
-                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
               >
                 {step.label}
                 <ArrowUpRight className="size-3" />
@@ -128,7 +135,7 @@ export function OnboardingPanel({
       <button
         type="button"
         onClick={handleReopen}
-        className="onboarding-collapsed flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-left text-sm transition hover:bg-muted/60"
+        className="onboarding-collapsed flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-left text-sm transition hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
       >
         <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
           <span className="text-[10px] font-semibold text-primary">{doneCount}</span>

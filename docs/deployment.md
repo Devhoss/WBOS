@@ -956,6 +956,10 @@ The stack is tuned for low-power homelab servers:
 | `scripts/backup.ps1` | Windows tiered backup script |
 | `scripts/restore.sh` | Linux restore script with tier selection |
 | `scripts/restore.ps1` | Windows restore script with tier selection |
+| `scripts/restore-test.sh` | Non-destructive restore test — restores a backup package into a throwaway DB, verifies, records result (see `docs/DISASTER_RECOVERY.md`) |
+| `scripts/backup-package.sh` | Scheduled single-package backup (Settings UI format) |
+| `scripts/sync-backups.sh` | Off-host mirror of backup packages (rsync / rclone / local mount) |
+| `scripts/health-alert.sh` | Host-cron alerting: polls `/api/health`, notifies on failures (webhook/Telegram/ntfy/email); see `.env.example` Alerting section |
 | `scripts/startup-validate.js` | Container startup validation |
 | `src/app/api/health/route.ts` | Health check API endpoint |
 | `src/app/health/page.tsx` | Health dashboard page |

@@ -3,6 +3,7 @@ import { writeFile } from "fs/promises";
 import { join } from "path";
 
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 import { uid } from "@/lib/uid";
 
@@ -12,6 +13,9 @@ const maxSize = 10 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+
+    const limited = accountRateLimitOrNull(context.userId, "signed-invoice-upload");
+    if (limited) return limited;
 
     const formData = await req.formData();
     const salesOrderId = formData.get("salesOrderId") as string | null;

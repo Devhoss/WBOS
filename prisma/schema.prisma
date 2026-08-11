@@ -1427,6 +1427,7 @@ model BusinessSettings {
   invoicePrefix          String       @default("INV")
   approvalMode           ApprovalMode @default(SELF)
   documentLanguage       String       @default("bilingual")
+  lowStockThreshold      Int          @default(10)
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 

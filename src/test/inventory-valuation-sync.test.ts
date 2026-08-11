@@ -7,7 +7,7 @@ import { KpiService } from "@/domains/reports/services/kpi-service";
 import { DashboardService } from "@/app/dashboard-service";
 
 const { mockPrisma } = vi.hoisted(() => {
-  const productCost = { findMany: vi.fn() };
+  const productCost = { findMany: vi.fn(), groupBy: vi.fn().mockResolvedValue([]) };
   const product = { count: vi.fn(), findMany: vi.fn() };
   const purchaseOrder = { count: vi.fn(), findMany: vi.fn() };
   const shipment = { count: vi.fn(), findMany: vi.fn() };
@@ -15,6 +15,7 @@ const { mockPrisma } = vi.hoisted(() => {
   const invoice = { count: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() };
   const activityLog = { findMany: vi.fn() };
   const inventoryLedgerEntry = { groupBy: vi.fn() };
+  const businessSettings = { findUnique: vi.fn().mockResolvedValue({ lowStockThreshold: 10 }) };
 
   return {
     mockPrisma: {
@@ -26,6 +27,7 @@ const { mockPrisma } = vi.hoisted(() => {
       invoice,
       activityLog,
       inventoryLedgerEntry,
+      businessSettings,
     },
   };
 });

@@ -7,6 +7,8 @@ import {
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
+import { cn } from "@/lib/utils";
+
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Products", href: "/products", icon: Package },
@@ -52,11 +54,13 @@ export function NavItems({ collapsed }: { collapsed?: boolean }) {
             key={item.href}
             href={item.href}
             title={collapsed ? item.name : undefined}
-            className={`nav-item flex h-9 items-center gap-3 rounded-md text-sm transition ${
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "nav-item flex h-9 items-center gap-3 rounded-md text-sm transition focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none",
               active
                 ? "bg-primary/10 text-primary font-medium"
-                : "text-muted-foreground hover:bg-background hover:text-foreground"
-            }`}
+                : "text-muted-foreground hover:bg-background hover:text-foreground",
+            )}
           >
             <item.icon className="size-4 shrink-0" />
             <span className="nav-item-label">{item.name}</span>

@@ -50,6 +50,12 @@ type ReportCategory = {
 
 const categories: ReportCategory[] = [
   {
+    title: "Executive",
+    reports: [
+      { title: "Executive Summary", description: "Key financial and operational metrics at a glance", icon: <BarChart3 className="size-5" />, href: "/reports/executive" },
+    ],
+  },
+  {
     title: "Sales",
     reports: [
       { title: "Sales by Customer", description: "Revenue and orders grouped by customer", icon: <Users className="size-5" />, href: "/reports/sales/by-customer" },
@@ -131,7 +137,7 @@ export default function ReportsPage() {
       <div className="border-b pb-6">
         <h1 className="text-2xl font-semibold tracking-normal">Reports</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Access dashboards and detailed reports across Sales, Purchasing, Inventory, Financial, and Operations.
+          Access dashboards and detailed reports across Executive, Sales, Purchasing, Inventory, Financial, and Operations.
         </p>
       </div>
 

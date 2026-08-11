@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { TaskApplicationService } from "@/domains/tasks/services/task-application-service";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { BusinessError } from "@/shared/errors/business-error";
 
 const app = new TaskApplicationService();
@@ -13,6 +14,10 @@ export async function POST(
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
     const { id } = await params;
+
+    const limited = accountRateLimitOrNull(context.userId, "task-complete");
+    if (limited) return limited;
+
     const body = await req.json().catch(() => ({}));
 
     const task = await app.completeTask(context, id, body.updatedAt);

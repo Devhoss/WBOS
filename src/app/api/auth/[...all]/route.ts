@@ -1,4 +1,7 @@
 import { auth } from "@/infrastructure/auth/auth";
+import { withAuthRateLimit } from "@/infrastructure/rate-limit/auth-guard";
 
-export const GET = auth.handler;
-export const POST = auth.handler;
+const handler = withAuthRateLimit((req: Request) => auth.handler(req));
+
+export const GET = handler;
+export const POST = handler;

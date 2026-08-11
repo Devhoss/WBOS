@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
 
 export async function DELETE(
@@ -10,6 +11,8 @@ export async function DELETE(
   const { id } = await params;
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const limited = accountRateLimitOrNull(context.userId, "notification-delete");
+    if (limited) return limited;
     const deleted = await createNotificationService().deleteById(
       context.organizationId,
       context.userId,

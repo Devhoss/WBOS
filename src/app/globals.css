@@ -137,4 +137,14 @@ html:not([data-sidebar-ready]) .main-area {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Keep hover, focus, and dialog feedback visible — override the blanket kill
+     for elements that provide interactive feedback */
+  a:hover, button:hover, [role="button"]:hover {
+    transition-duration: 150ms !important;
+  }
+  :focus-visible {
+    transition-duration: 150ms !important;
+  }
 }
+

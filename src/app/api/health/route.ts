@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
 import { BackupService } from "@/domains/backups/services/backup-service";
+import { resolveStorageMinFreeBytes } from "@/infrastructure/storage/assert-capacity";
 
 export const dynamic = "force-dynamic";
 
@@ -66,12 +67,19 @@ export async function GET() {
   }
 
   const uploadsDir = join(storageRoot, "uploads");
-  storageChecks.uploads = existsSync(uploadsDir);
-
   const disk = checkDiskSpace([storageRoot, process.env.WBOS_BACKUP_DIR ?? "./backups"]);
   if (disk.some((d) => d.availablePercent !== null && d.availablePercent < 10)) {
     healthy = false;
   }
+  const uploads = dirSizeBytes(uploadsDir);
+  const storageTotalBytes = disk.find((d) => d.path === storageRoot)?.totalBytes ?? null;
+  storageChecks.uploads = {
+    exists: existsSync(uploadsDir),
+    sizeBytes: uploads.sizeBytes,
+    fileCount: uploads.fileCount,
+    pctOfDisk: storageTotalBytes ? Math.round((uploads.sizeBytes / storageTotalBytes) * 100) : null,
+  };
+  storageChecks.minFreeBytes = resolveStorageMinFreeBytes();
   storageChecks.disk = disk;
   checks.storage = storageChecks;
 
@@ -173,4 +181,34 @@ function checkDiskSpace(paths: string[]) {
       };
     }
   });
+}
+
+function dirSizeBytes(root: string): { sizeBytes: number; fileCount: number } {
+  let sizeBytes = 0;
+  let fileCount = 0;
+  const walk = (dir: string): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const p = join(dir, name);
+      let st;
+      try {
+        st = statSync(p);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(p);
+      } else if (st.isFile()) {
+        sizeBytes += st.size;
+        fileCount += 1;
+      }
+    }
+  };
+  walk(root);
+  return { sizeBytes, fileCount };
 }

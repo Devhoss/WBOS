@@ -21,6 +21,47 @@ import {
 
 const startTime = Date.now();
 
+function dirSizeBytes(root: string): { sizeBytes: number; fileCount: number } {
+  let sizeBytes = 0;
+  let fileCount = 0;
+  const walk = (dir: string): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const p = path.join(dir, name);
+      let st;
+      try {
+        st = statSync(p);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) walk(p);
+      else if (st.isFile()) {
+        sizeBytes += st.size;
+        fileCount += 1;
+      }
+    }
+  };
+  walk(root);
+  return { sizeBytes, fileCount };
+}
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const fixed = value.toFixed(unit === 0 ? 0 : 1);
+  return `${fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed} ${units[unit]}`;
+}
+
 export const dynamic = "force-dynamic";
 export const metadata = { title: "System Health" };
 
@@ -68,6 +109,16 @@ async function getHealth() {
       const exists = existsSync(sp);
       if (exists) {
         blocks.push({ label: "Upload Storage", value: `${sp} (writable)`, ok: true, icon: <HardDrive className="size-5" /> });
+        const uploads = dirSizeBytes(path.join(sp, "uploads"));
+        const s = statfsSync(sp);
+        const totalBytes = s.blocks * s.bsize;
+        const pct = totalBytes > 0 ? Math.round((uploads.sizeBytes / totalBytes) * 100) : null;
+        blocks.push({
+          label: "Uploads Size",
+          value: `${formatBytes(uploads.sizeBytes)} · ${uploads.fileCount} files${pct !== null ? ` · ${pct}% of disk` : ""}`,
+          ok: pct === null || pct < 75,
+          icon: <FileText className="size-5" />,
+        });
       } else {
         blocks.push({ label: "Upload Storage", value: `${sp} (missing)`, ok: false, icon: <XCircle className="size-5" /> });
       }

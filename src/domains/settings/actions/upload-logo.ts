@@ -7,6 +7,7 @@ import { existsSync } from "fs";
 import { revalidatePath } from "next/cache";
 
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { assertStorageCapacity } from "@/infrastructure/storage/assert-capacity";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { BusinessSettingsRepository } from "../repositories/business-settings-repository";
@@ -77,8 +78,12 @@ export async function uploadLogoAction(formData: FormData) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     try {
+      assertStorageCapacity(storageRoot, buffer.byteLength);
       await writeFile(filePath, buffer);
     } catch (err) {
+      if (err instanceof BusinessError) {
+        return { ok: false, message: err.message };
+      }
       console.error("[upload-logo] Failed to write file", {
         storageRoot,
         destinationPath: filePath,

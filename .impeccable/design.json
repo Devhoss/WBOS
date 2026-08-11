@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-09T00:00:00.000Z",
+  "title": "Design System: WBOS",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Operational Teal",
+        "canonical": "hsl(173 73% 31%)",
+        "tonalRamp": ["#0a3d33", "#0f5a4a", "#147862", "#17a484", "#2dbfa0", "#5ed4bc", "#8fe6d6", "#c2f3eb"]
+      },
+      "primary-deep": {
+        "role": "primary",
+        "displayName": "Teal Deep",
+        "canonical": "hsl(172 66% 42%)",
+        "tonalRamp": ["#074a3d", "#0b6653", "#0f8a6e", "#18a88a", "#32c0a2", "#5cd4bc", "#88e4d2", "#b8f0e6"]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Clean White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#f5f7f9", "#f8f9fa", "#fafbfc", "#fcfcfd", "#fdfdfe", "#fefeff", "#ffffff", "#ffffff"]
+      },
+      "neutral-surface": {
+        "role": "neutral",
+        "displayName": "Surface Mist",
+        "canonical": "#f5f7f9",
+        "tonalRamp": ["#e8ecf0", "#edf0f3", "#f2f4f6", "#f5f7f9", "#f8f9fb", "#fafbfc", "#fcfcfd", "#fefeff"]
+      },
+      "neutral-border": {
+        "role": "neutral",
+        "displayName": "Border Gray",
+        "canonical": "#dde2e8",
+        "tonalRamp": ["#c0c8d1", "#ccd3db", "#d6dce3", "#dde2e8", "#e5e9ee", "#ecef2", "#f2f4f6", "#f8f9fb"]
+      },
+      "neutral-muted": {
+        "role": "neutral",
+        "displayName": "Muted Gray",
+        "canonical": "#6b7a8d",
+        "tonalRamp": ["#3d4a5a", "#4d5c6e", "#5c6b7e", "#6b7a8d", "#7f8d9e", "#93a0ae", "#a7b2bd", "#bcc4cc"]
+      },
+      "neutral-text": {
+        "role": "neutral",
+        "displayName": "Ink Navy",
+        "canonical": "#1e293b",
+        "tonalRamp": ["#0f172a", "#152036", "#1a2540", "#1e293b", "#273548", "#334155", "#475569", "#64748b"]
+      },
+      "dark-bg": {
+        "role": "neutral",
+        "displayName": "Deep Space",
+        "canonical": "#0f1420",
+        "tonalRamp": ["#080b12", "#0c101a", "#0f1420", "#141c2a", "#1a2436", "#212d42", "#2a3850", "#34445e"]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "canonical": "#1a2030",
+        "tonalRamp": ["#111724", "#151c2a", "#1a2030", "#1f2738", "#252e42", "#2c364e", "#34405c", "#3d4a68"]
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Dark Border",
+        "canonical": "#2a3248",
+        "tonalRamp": ["#1a2236", "#202a3e", "#2a3248", "#323c54", "#3c4760", "#46526e", "#505e7c", "#5c6c8a"]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark Muted",
+        "canonical": "#8492a6",
+        "tonalRamp": ["#5a6878", "#6a7888", "#7a8898", "#8492a6", "#92a0b2", "#a0aec0", "#aebcc8", "#bcc8d2"]
+      },
+      "dark-text": {
+        "role": "neutral",
+        "displayName": "Dark Text",
+        "canonical": "#e2e8f0",
+        "tonalRamp": ["#94a3b8", "#a8b8c8", "#bcc8d4", "#d0dce6", "#e2e8f0", "#edf1f5", "#f1f5f9", "#f8fafc"]
+      },
+      "destructive": {
+        "role": "destructive",
+        "displayName": "Danger Red",
+        "canonical": "#dc3545",
+        "tonalRamp": ["#7f1d24", "#991f2b", "#b42834", "#dc3545", "#e04d5a", "#e66b77", "#ec8a94", "#f2a8b1"]
+      },
+      "destructive-hover": {
+        "role": "destructive",
+        "displayName": "Destructive Hover",
+        "canonical": "#c82333",
+        "tonalRamp": ["#6e131c", "#851a24", "#9c202c", "#c82333", "#d23d4d", "#dc5c6a", "#e47c88", "#ec9da5"]
+      },
+      "status-draft": {
+        "role": "status",
+        "displayName": "Draft Blue",
+        "canonical": "#3b82f6",
+        "tonalRamp": ["#1e3a6e", "#264a8a", "#2e5aa6", "#3b82f6", "#5a9af8", "#7db2f9", "#a0c8fb", "#c3defd"]
+      },
+      "status-active": {
+        "role": "status",
+        "displayName": "Active Emerald",
+        "canonical": "#10b981",
+        "tonalRamp": ["#064e3b", "#0a6e50", "#0d8e65", "#10b981", "#34d399", "#5eead4", "#86efac", "#a7f3d0"]
+      },
+      "status-warning": {
+        "role": "status",
+        "displayName": "Warning Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#78350f", "#92400e", "#b45309", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a", "#fef3c7"]
+      },
+      "status-danger": {
+        "role": "status",
+        "displayName": "Status Danger",
+        "canonical": "#ef4444",
+        "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#ef4444", "#f87171", "#fca5a5", "#fecaca", "#fee2e2"]
+      },
+      "status-info": {
+        "role": "status",
+        "displayName": "Info Cyan",
+        "canonical": "#06b6d4",
+        "tonalRamp": ["#083344", "#0e5e78", "#1489ac", "#06b6d4", "#22d3ee", "#67e8f9", "#a5f3fc", "#cffafe"]
+      },
+      "status-purple": {
+        "role": "status",
+        "displayName": "Invoiced Purple",
+        "canonical": "#a855f7",
+        "tonalRamp": ["#581c87", "#6b21a8", "#7e22ce", "#a855f7", "#c084fc", "#d8b4fe", "#e9d5ff", "#f3e8ff"]
+      },
+      "status-muted": {
+        "role": "status",
+        "displayName": "Archive Gray",
+        "canonical": "#6b7280",
+        "tonalRamp": ["#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6", "#f9fafb"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page titles — one per page, sets the context." },
+      "headline": { "displayName": "Headline", "purpose": "Section headers within pages — groups related content." },
+      "title": { "displayName": "Title", "purpose": "Card headers, table headers, dialog titles — structural hierarchy." },
+      "body": { "displayName": "Body", "purpose": "Primary content text, table cells, form labels — the workhorse." },
+      "label": { "displayName": "Label", "purpose": "Button text, navigation items, interactive element labels." },
+      "small": { "displayName": "Small", "purpose": "Timestamps, metadata, secondary info — subordinate but present." }
+    },
+    "shadows": [
+      { "name": "dialog", "value": "0 25px 50px -12px rgba(0, 0, 0, 0.25)", "purpose": "Modal dialogs. Creates separation from the 50% black overlay." },
+      { "name": "drawer", "value": "0 25px 50px -12px rgba(0, 0, 0, 0.25)", "purpose": "Mobile navigation drawer. Slides in from left with elevation." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Default easing for state transitions (hover, focus, theme toggle)." },
+      { "name": "ease-in-out", "value": "ease-in-out", "purpose": "Sidebar width transitions, drawer slide." },
+      { "name": "duration-fast", "value": "150ms", "purpose": "Dialog overlay and content animations." },
+      { "name": "duration-normal", "value": "200ms", "purpose": "Sidebar width, drawer slide, general transitions." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Teal action button for primary workflows — form submissions, confirmations, empty state CTAs.",
+      "html": "<button class=\"ds-btn-primary\">SAVE CHANGES</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; background: #17a484; color: #ffffff; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; line-height: 1; border: none; border-radius: 6px; cursor: pointer; transition: opacity 0.2s ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:focus-visible { outline: 2px solid #17a484; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Border button for secondary actions — cancel, close, filter toggles.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; background: transparent; color: #1e293b; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; line-height: 1; border: 1px solid #dde2e8; border-radius: 6px; cursor: pointer; transition: background 0.2s ease; } .ds-btn-secondary:hover { background: #f5f7f9; } .ds-btn-secondary:focus-visible { outline: 2px solid #17a484; outline-offset: 2px; }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Red action button for dangerous operations — delete, cancel order, write-off.",
+      "html": "<button class=\"ds-btn-destructive\">DELETE</button>",
+      "css": ".ds-btn-destructive { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; background: #dc3545; color: #ffffff; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; line-height: 1; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s ease; } .ds-btn-destructive:hover { background: #c82333; } .ds-btn-destructive:focus-visible { outline: 2px solid #dc3545; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard text input for forms — customer names, product codes, addresses.",
+      "html": "<div class=\"ds-input-group\"><label class=\"ds-input-label\">Customer Name</label><input class=\"ds-input\" type=\"text\" placeholder=\"Enter name\"></div>",
+      "css": ".ds-input-group { display: flex; flex-direction: column; gap: 8px; } .ds-input-label { font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 500; color: #1e293b; } .ds-input { height: 40px; padding: 0 12px; background: #ffffff; color: #1e293b; font-family: Inter, system-ui, sans-serif; font-size: 14px; border: 1px solid #dde2e8; border-radius: 6px; outline: none; transition: border-color 0.2s ease; } .ds-input::placeholder { color: #6b7a8d; } .ds-input:focus { border-color: #17a484; } .ds-input:disabled { opacity: 0.6; cursor: not-allowed; }"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar navigation link — active state uses teal, inactive uses muted gray.",
+      "html": "<a class=\"ds-nav-item\" href=\"/products\"><svg class=\"ds-nav-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/></svg><span>Products</span></a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; color: #6b7a8d; font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 400; text-decoration: none; border-radius: 6px; transition: background 0.15s ease, color 0.15s ease; } .ds-nav-item:hover { background: #ffffff; color: #1e293b; } .ds-nav-item.active { background: rgba(23, 164, 132, 0.1); color: #17a484; font-weight: 500; } .ds-nav-icon { width: 16px; height: 16px; flex-shrink: 0; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Content container with border — used for sections, detail panels, and data groups.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><h3 class=\"ds-card-title\">Monthly Sales Trend</h3></div><div class=\"ds-card-body\"><p class=\"ds-card-content\">No sales data yet.</p></div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #dde2e8; border-radius: 8px; overflow: hidden; } .ds-card-header { padding: 16px 20px; border-bottom: 1px solid #dde2e8; } .ds-card-title { font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 600; color: #1e293b; margin: 0; } .ds-card-body { padding: 16px 20px; } .ds-card-content { font-family: Inter, system-ui, sans-serif; font-size: 14px; color: #6b7a8d; text-align: center; padding: 32px 0; margin: 0; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Semantic status indicator — tinted background with saturated text for business states.",
+      "html": "<span class=\"ds-status-badge ds-status-active\">ACTIVE</span>",
+      "css": ".ds-status-badge { display: inline-flex; align-items: center; padding: 2px 8px; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 400; line-height: 1.4; border-radius: 9999px; white-space: nowrap; } .ds-status-active { background: rgba(16, 185, 129, 0.1); color: #10b981; } .ds-status-draft { background: rgba(59, 130, 246, 0.1); color: #3b82f6; } .ds-status-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; } .ds-status-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; } .ds-status-info { background: rgba(6, 182, 212, 0.1); color: #06b6d4; } .ds-status-purple { background: rgba(168, 85, 247, 0.1); color: #a855f7; } .ds-status-muted { background: rgba(107, 114, 128, 0.1); color: #6b7280; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operational Clarity",
+    "overview": "WBOS is a precise, calm command center — a well-organized back office where every element has its place and nothing earns attention it doesn't deserve. The design language is functional clarity over decoration: border-driven cards, restrained teal accents, and a typographic hierarchy that prioritizes scanability above all else.\n\nThe visual personality is reserved and professional. The teal primary acts as a quiet authority — present but never loud, used sparingly to guide the eye to actions and active states. The neutral palette does the heavy lifting, with borders (not shadows) defining structure and separation. The result is a workspace that feels trustworthy and efficient, like a well-maintained ledger.",
+    "keyCharacteristics": [
+      "Border-driven depth — cards and sections separated by 1px borders, not shadows",
+      "Reserved accent — teal used only on primary actions and active navigation",
+      "Scan-first typography — small, dense, information-rich layouts",
+      "Flat layering — surfaces distinguished by subtle background shifts, not elevation",
+      "Print-ready — A4 layouts with clean, professional output"
+    ],
+    "rules": [
+      { "name": "The Sparingly Teal Rule", "body": "The primary teal is used on ≤15% of any given screen. Its rarity is the point — it signals 'this is actionable' without visual noise. When in doubt, use muted gray.", "section": "colors" },
+      { "name": "The Status Color Rule", "body": "Status badges use tinted backgrounds (10% opacity) with full-saturation text. Never use status colors on large surfaces — they are signals, not decorations.", "section": "colors" },
+      { "name": "The Density Rule", "body": "Information density is a feature, not a bug. Text is small (14px body), spacing is tight, and the goal is to show as much business data as possible without scrolling. Dense ≠ cluttered.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only in two contexts: (1) dialogs and modals get a shadow-xl for visual separation from the overlay, and (2) the mobile nav drawer gets shadow-xl when open.", "section": "elevation" },
+      { "name": "The Border Is The Line Rule", "body": "Every card, section, and container is defined by its 1px border, not by shadow or background contrast. Borders are the primary visual separator.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use borders to separate sections — never rely on background color alone for structure.",
+      "Do keep the teal accent sparse — it signals action, not decoration.",
+      "Do use 14px as the body size — density is a feature.",
+      "Do print layouts cleanly — the A4 print styles are production-ready.",
+      "Do use status badges consistently — the semantic color system is a language users learn.",
+      "Do collapse the sidebar to save space — users can Ctrl+B to toggle."
+    ],
+    "donts": [
+      "Don't add shadows to cards or sections — the flat/border model is intentional.",
+      "Don't use status colors on large surfaces — they are badge signals, not background colors.",
+      "Don't increase font size beyond 14px for body text — the design is dense by purpose.",
+      "Don't add decorative elements, gradients, or illustrations to operational screens.",
+      "Don't use pure black (#000) or pure white (#fff) for text.",
+      "Don't create new radius values — stick to 4px/6px/8px."
+    ]
+  }
+}

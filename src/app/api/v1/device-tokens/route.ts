@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 
 import type { DevicePlatform } from "@prisma/client";
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest) {
     console.warn("[device-tokens] POST rejected: authentication failed", (err as Error).message ?? err);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = accountRateLimitOrNull(context.userId, "device-tokens");
+  if (limited) return limited;
 
   const body = await req.json().catch(() => null);
   const { token, platform, deviceName, appVersion } = (body ?? {}) as {
@@ -78,6 +82,9 @@ export async function DELETE(req: NextRequest) {
     console.warn("[device-tokens] DELETE rejected: authentication failed", (err as Error).message ?? err);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const limited = accountRateLimitOrNull(context.userId, "device-tokens");
+  if (limited) return limited;
 
   const body = await req.json().catch(() => null);
   const { token } = (body ?? {}) as { token?: string };

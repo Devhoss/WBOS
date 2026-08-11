@@ -50,7 +50,7 @@ export function Sidebar({
           onClick={toggle}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand (Ctrl+B)" : "Collapse (Ctrl+B)"}
-          className="flex h-8 w-full items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-foreground"
+          className="flex h-8 w-full items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
         >
           <ChevronLeft className="toggle-icon-expand size-4" />
           <ChevronRight className="toggle-icon-collapse size-4" />

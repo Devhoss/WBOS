@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 
 export async function GET(req: NextRequest) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+
+    const limited = accountRateLimitOrNull(context.userId, "auth-me");
+    if (limited) return limited;
 
     const warehouses = await prisma.warehouse.findMany({
       where: { organizationId: context.organizationId, archivedAt: null },
