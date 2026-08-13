@@ -38,6 +38,14 @@ body {
     sans-serif;
 }
 
+.invoice-content > * + * {
+  margin-top: 5px;
+}
+
+.invoice-content {
+  padding: 0;
+}
+
 a,
 button {
   outline-color: hsl(var(--primary));

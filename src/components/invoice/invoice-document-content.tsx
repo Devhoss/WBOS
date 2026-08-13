@@ -30,7 +30,7 @@ export function InvoiceDocumentContent({
   const sectionProps = { branding, invoice, language, isRtl };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px", padding: "0" }} dir={isRtl ? "rtl" : "ltr"}>
+    <div className="invoice-content" dir={isRtl ? "rtl" : "ltr"}>
       <InvoiceHeader {...sectionProps} />
 
       <div style={{ borderTop: "1px solid #d1d5db" }} />

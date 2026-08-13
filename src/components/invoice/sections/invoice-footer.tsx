@@ -8,12 +8,12 @@ export function InvoiceFooter({ branding, invoice, language, isRtl }: SectionPro
     <>
       {branding.termsAndConditions ? (
         <div className="avoid-break">
-          <div style={{ borderTop: "1px solid #d1d5db", paddingTop: "10px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#4b5563" }}
+          <div style={{ borderTop: "1px solid #d1d5db", paddingTop: "6px" }}>
+            <div style={{ fontSize: "11.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#374151" }}
               className={align}>
               {t("termsAndConditions", language)}
             </div>
-            <div style={{ marginTop: "4px", whiteSpace: "pre-wrap", fontSize: "12px", lineHeight: 1.5, color: "#374151" }}
+            <div style={{ marginTop: "3px", whiteSpace: "pre-wrap", fontSize: "12px", lineHeight: 1.5, color: "#374151" }}
               className={align}>
               {branding.termsAndConditions}
             </div>
@@ -21,8 +21,8 @@ export function InvoiceFooter({ branding, invoice, language, isRtl }: SectionPro
         </div>
       ) : null}
 
-      <div className="avoid-break" style={{ borderTop: "1px solid #d1d5db", paddingTop: "8px", marginTop: "8px" }}>
-        <div style={{ fontSize: "10px", color: "#6b7280" }} className={align}>
+      <div className="avoid-break" style={{ borderTop: "1px solid #d1d5db", paddingTop: "6px", marginTop: "6px" }}>
+        <div style={{ fontSize: "11px", color: "#6b7280", lineHeight: 1.5 }} className={align}>
           {branding.footer || `${branding.businessName} — ${invoice.invoiceNumber}`}
         </div>
       </div>

@@ -18,12 +18,12 @@ export function InvoiceCompanyInfo({ branding, language, isRtl }: SectionProps) 
                   </span>
                 ) : null}
               </div>
-              <div style={{ marginTop: "8px" }}>
-                {branding.address ? <div style={{ marginTop: "3px", color: "#4b5563" }}>{branding.address}</div> : null}
-                <div style={{ marginTop: "3px", color: "#4b5563" }}>
+              <div style={{ marginTop: "4px" }}>
+                {branding.address ? <div style={{ marginTop: "1px", color: "#4b5563" }}>{branding.address}</div> : null}
+                <div style={{ marginTop: "1px", color: "#4b5563" }}>
                   {[branding.phone, branding.email, branding.website].filter(Boolean).join(" | ")}
                 </div>
-                <div style={{ marginTop: "3px", color: "#4b5563" }}>
+                <div style={{ marginTop: "1px", color: "#4b5563" }}>
                   {branding.vatNumber ? `${t("vatNumber", language)}: ${branding.vatNumber}` : null}
                   {branding.vatNumber && branding.commercialRegistration ? " | " : null}
                   {branding.commercialRegistration ? `${t("commercialRegistration", language)}: ${branding.commercialRegistration}` : null}

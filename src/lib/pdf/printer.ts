@@ -46,7 +46,7 @@ export async function generatePdfFromUrl(url: string): Promise<Uint8Array> {
 
   const buffer = await page.pdf({
     format: "A4",
-    margin: { top: "12mm", bottom: "12mm", left: "15mm", right: "15mm" },
+    margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
     printBackground: true,
     preferCSSPageSize: true,
   });
@@ -68,7 +68,7 @@ export async function generatePdfFromHtml(html: string): Promise<Uint8Array> {
 
   const buffer = await page.pdf({
     format: "A4",
-    margin: { top: "12mm", bottom: "12mm", left: "15mm", right: "15mm" },
+    margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
     printBackground: true,
     preferCSSPageSize: true,
   });

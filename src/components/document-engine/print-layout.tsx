@@ -4,9 +4,9 @@ export function PrintLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="print-page" style={{
       width: "210mm",
-      minHeight: "297mm",
+      minHeight: "277mm",
       margin: "0 auto",
-      padding: "12mm 15mm",
+      padding: "8mm 15mm",
       background: "white",
       boxSizing: "border-box",
       fontFamily: "'Noto Sans Arabic', 'Noto Naskh Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
@@ -17,7 +17,7 @@ export function PrintLayout({ children }: { children: React.ReactNode }) {
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 12mm 15mm;
+          margin: 10mm 15mm;
         }
 
         @media print {
@@ -34,6 +34,27 @@ export function PrintLayout({ children }: { children: React.ReactNode }) {
         }
 
         .print-page table {
+          page-break-inside: avoid;
+        }
+
+        .print-page .document-table {
+          break-inside: auto;
+          page-break-inside: auto;
+        }
+
+        .print-page .document-table table {
+          page-break-inside: auto;
+          break-inside: auto;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+
+        .print-page .document-table thead {
+          display: table-header-group;
+        }
+
+        .print-page .document-table tr {
+          break-inside: avoid;
           page-break-inside: avoid;
         }
 

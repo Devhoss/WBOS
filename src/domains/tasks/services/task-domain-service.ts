@@ -600,7 +600,7 @@ export class TaskDomainService {
     );
 
     // Mark line COMPLETED if fully picked (quantityOrdered is resolved from the shipment line)
-    const updated = await this.composeDetail(context.organizationId, taskId);
+    let updated = await this.composeDetail(context.organizationId, taskId);
     if (updated) {
       const updatedLine = updated.lines.find((l) => l.id === lineId);
       if (updatedLine && updatedLine.quantityOrdered > 0 && updatedLine.completedQuantity >= updatedLine.quantityOrdered) {
@@ -611,6 +611,7 @@ export class TaskDomainService {
           completedQuantity,
           "COMPLETED" as any,
         );
+        updated = (await this.composeDetail(context.organizationId, taskId))!;
       }
     }
 

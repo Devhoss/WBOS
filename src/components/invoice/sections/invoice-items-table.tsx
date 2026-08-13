@@ -1,6 +1,13 @@
 import { t, type DocTableColumn } from "@/components/document-engine";
 import type { InvoiceLine, SectionProps } from "./types";
 
+const numericCell = {
+  fontFamily: "'Courier New', monospace",
+  fontVariantNumeric: "tabular-nums" as const,
+  color: "#111827",
+  fontWeight: 700,
+};
+
 export function InvoiceItemsTable({ invoice, language }: SectionProps) {
   const columns: DocTableColumn[] = [
     {
@@ -8,7 +15,7 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
       label: t("barcode", language),
       width: "12%",
       render: (row) => (
-        <span style={{ fontFamily: "'Courier New', monospace", fontSize: "11px", color: "#4b5563", fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ fontFamily: "'Courier New', monospace", fontSize: "12px", fontWeight: 600, color: "#1f2937", fontVariantNumeric: "tabular-nums" }}>
           {String(row.productBarcode ?? "—")}
         </span>
       ),
@@ -19,34 +26,35 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
       width: "28%",
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 600, color: "#1f2937" }}>
+          <div style={{ fontWeight: 700, color: "#111827", fontSize: "12.5px" }}>
             {language === "arabic" ? (String(row.productArabicName ?? row.productName)) : String(row.productName)}
             {(row as InvoiceLine).lineType === "FREE_SAMPLE" ? (
               <span style={{
                 marginLeft: "6px",
                 fontSize: "8px",
-                fontWeight: 700,
-                color: "#fff",
+                fontWeight: 600,
+                color: "#166534",
                 textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                background: "#16a34a",
-                borderRadius: "3px",
+                letterSpacing: "0.03em",
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "2px",
                 padding: "1px 5px",
-                lineHeight: 1.4,
+                lineHeight: 1.3,
                 display: "inline-flex",
                 flexDirection: "column",
-                alignItems: "center",
+                alignItems: "flex-start",
                 verticalAlign: "middle",
               }}>
                 <span>FREE SAMPLE</span>
-                <span style={{ fontSize: "7px", opacity: 0.9 }}>عينة مجانية</span>
+                <span style={{ fontSize: "7px", fontWeight: 500 }}>عينة مجانية</span>
               </span>
             ) : null}
           </div>
           {row.productArabicName && language !== "arabic" ? (
-            <div style={{ fontSize: "10px", color: "#9ca3af" }}>{String(row.productArabicName)}</div>
+            <div style={{ fontSize: "11px", color: "#6b7280" }}>{String(row.productArabicName)}</div>
           ) : null}
-          <div style={{ fontSize: "10px", color: "#9ca3af" }}>
+          <div style={{ fontSize: "11px", color: "#6b7280" }}>
             {String(row.productSku)}
           </div>
         </div>
@@ -57,7 +65,7 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
       label: t("unit", language),
       width: "7%",
       align: "center",
-      render: (row) => <span style={{ fontSize: "10px", color: "#6b7280" }}>{String(row.unitOfMeasureCode)}</span>,
+      render: (row) => <span style={{ fontSize: "11px", color: "#4b5563" }}>{String(row.unitOfMeasureCode)}</span>,
     },
     {
       key: "piecesPerBox",
@@ -71,39 +79,45 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
       label: t("quantity", language),
       width: "10%",
       align: "right",
-      render: (row) => `${Number(row.quantity).toFixed(3)}`,
+      render: (row) => <span style={numericCell}>{`${Number(row.quantity).toFixed(3)}`}</span>,
     },
     {
       key: "unitPrice",
       label: t("unitPrice", language),
       width: "12%",
       align: "right",
-      render: (row) => `${Number(row.unitPrice).toFixed(3)}`,
+      render: (row) => <span style={numericCell}>{`${Number(row.unitPrice).toFixed(3)}`}</span>,
     },
     {
       key: "totalPrice",
       label: t("total", language),
       width: "13%",
       align: "right",
-      render: (row) => `${Number(row.totalPrice).toFixed(3)}`,
+      render: (row) => (
+        <span style={{ ...numericCell, fontSize: "13.5px", fontWeight: 800, color: "#0f172a" }}>
+          {`${Number(row.totalPrice).toFixed(3)}`}
+        </span>
+      ),
     },
   ];
 
   return (
     <div className="document-table">
-      <table className="w-full border-collapse" style={{ fontSize: "11px" }}>
+      <table className="w-full" style={{ fontSize: "12px", borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
-          <tr style={{ borderBottom: "2px solid #1f2937", background: "#f3f4f6" }}>
+          <tr style={{ background: "#eef1f5" }}>
             {columns.map((col) => (
               <th
                 key={col.key}
                 style={{
                   width: col.width,
-                  padding: "8px 6px",
-                  fontWeight: 600,
+                  padding: "7px 8px",
+                  fontWeight: 700,
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
-                  color: "#374151",
+                  color: "#1f2937",
+                  fontSize: "11px",
+                  borderBottom: "2px solid #1f2937",
                   textAlign: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
                 }}
               >
@@ -115,14 +129,14 @@ export function InvoiceItemsTable({ invoice, language }: SectionProps) {
         <tbody>
           {invoice.lines.map((line, i) => (
             <tr key={i} style={{
-              borderBottom: "1px solid #e5e7eb",
-              background: i % 2 === 0 ? "white" : "rgba(249,250,251,0.5)",
+              background: i % 2 === 0 ? "white" : "rgba(248,249,251,0.7)",
             }}>
               {columns.map((col) => (
                 <td
                   key={col.key}
                   style={{
-                    padding: "7px 6px",
+                    padding: "6px 8px",
+                    borderBottom: "1px solid #d6dae1",
                     textAlign: col.align === "right" ? "right" : col.align === "center" ? "center" : "left",
                     fontFamily: col.align === "right" ? "'Courier New', monospace" : "inherit",
                   }}

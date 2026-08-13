@@ -12,7 +12,7 @@ export function InvoiceHeader({ branding, invoice, language, isRtl }: SectionPro
               <img
                 src={`/api/${branding.logoPath}`}
                 alt={branding.businessName}
-                style={{ maxHeight: "100px", maxWidth: "240px", objectFit: "contain" }}
+                style={{ maxHeight: "90px", maxWidth: "280px", objectFit: "contain" }}
               />
             ) : (
               <div className="pt-1 text-lg font-bold tracking-tight text-gray-900">
@@ -21,10 +21,10 @@ export function InvoiceHeader({ branding, invoice, language, isRtl }: SectionPro
             )}
           </td>
           <td className={`w-2/3 align-top ${isRtl ? "text-left" : "text-right"}`}>
-            <div className={`text-2xl font-bold tracking-tight text-gray-900 ${isRtl ? "text-left" : "text-right"}`}>
+            <div className={`text-3xl font-bold tracking-tight text-gray-900 ${isRtl ? "text-left" : "text-right"}`}>
               {t("invoice", language)}
             </div>
-            <div className="mt-0.5 text-sm font-semibold text-gray-600">
+            <div className="mt-0.5 text-base font-semibold text-gray-600">
               {`#${invoice.invoiceNumber}`}
             </div>
           </td>

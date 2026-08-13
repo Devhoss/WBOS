@@ -376,6 +376,43 @@ describe("TaskDomainService", () => {
       expect(result).not.toBeNull();
       expect(addPickSpy).toHaveBeenCalled();
     });
+
+    it("should report COMPLETED line status once the final quantity is reached", async () => {
+      const line = {
+        id: "tl-1",
+        organizationId: "org-1",
+        taskId: "task-1",
+        referenceLineId: "sl-1",
+        completedQuantity: 0,
+        status: "PENDING",
+        notes: null,
+        sortOrder: 1,
+      };
+      const mockTask = createMockTask({
+        status: "IN_PROGRESS",
+        startedAt: new Date(),
+        lines: [line],
+      });
+
+      vi.spyOn(TaskRepository.prototype, "findById").mockImplementation(async () => mockTask as any);
+      vi.spyOn(TaskRepository.prototype, "updateLineQuantity").mockImplementation(
+        async (_orgId, _taskId, _lineId, completedQuantity, status) => {
+          line.completedQuantity = completedQuantity;
+          if (status) line.status = status;
+          return {} as any;
+        },
+      );
+      vi.spyOn(TaskRepository.prototype, "findMany").mockResolvedValue({ data: [], total: 0 } as any);
+      mockShipmentDependencies();
+
+      const result = await service.updateLine(mockContext(), "task-1", "tl-1", 10);
+
+      expect(result).not.toBeNull();
+      const composedLine = result!.lines.find((l) => l.id === "tl-1");
+      expect(composedLine).toBeDefined();
+      expect(composedLine!.completedQuantity).toBe(10);
+      expect(composedLine!.status).toBe("COMPLETED");
+    });
   });
 
   describe("ensurePromotedTasks", () => {

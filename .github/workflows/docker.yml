@@ -10,8 +10,83 @@ permissions:
   packages: write
 
 jobs:
-  docker:
+  quality-gates:
+    name: Quality Gates (typecheck, lint, unit tests)
     runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: "24"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://wbos:wbos@localhost:5432/wbos?schema=public
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: wbos
+          POSTGRES_PASSWORD: wbos
+          POSTGRES_DB: wbos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed base data
+        run: node prisma/seed.mjs
+
+      - name: Seed demo data
+        run: node prisma/demo-seed.mjs
+
+      - name: E2E tests
+        run: npx vitest run -c vitest.e2e.config.ts
+
+  docker:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    needs: [quality-gates, e2e-tests]
 
     steps:
       - uses: actions/checkout@v4
