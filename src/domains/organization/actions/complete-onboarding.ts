@@ -25,6 +25,9 @@ export async function completeOnboarding(input: unknown) {
 
     await new OnboardingService().completeFirstOrganization({
       userId: session.user.id,
+      // Used to match WBOS_BOOTSTRAP_OWNER_EMAIL when the organization already
+      // has members — see OnboardingService.
+      userEmail: session.user.email,
       organizationName: parsed.data.organizationName,
     });
   } catch (error) {

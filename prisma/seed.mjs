@@ -44,12 +44,90 @@ const DEFAULT_ADJUSTMENT_REASONS = [
   { name: "Opening Balance", code: "OPENING", direction: null, isSystem: true },
 ];
 
+/**
+ * Pick the user who should own the bootstrap organization.
+ *
+ * Deterministic by design. "Earliest-created user" is NOT good enough on a
+ * production host: whoever happens to sign up first wins, and if that is not
+ * the intended owner the real owner ends up with no membership and gets 401
+ * from every org-scoped endpoint.
+ *
+ * Resolution order:
+ *   1. WBOS_BOOTSTRAP_OWNER_EMAIL — explicit, the production path.
+ *   2. The only user, when exactly one exists — unambiguous, the dev path.
+ *   3. Otherwise: refuse to guess and say so.
+ */
+async function resolveBootstrapOwner(client) {
+  const configured = (process.env.WBOS_BOOTSTRAP_OWNER_EMAIL ?? "").trim();
+
+  if (configured) {
+    const user = await client.user.findFirst({
+      where: { email: { equals: configured, mode: "insensitive" } },
+    });
+    if (user) return { user, reason: `WBOS_BOOTSTRAP_OWNER_EMAIL=${configured}` };
+    return {
+      user: null,
+      reason: `no user with email ${configured} yet — have them sign up, then re-run this seed`,
+    };
+  }
+
+  const users = await client.user.findMany({ orderBy: { createdAt: "asc" }, take: 2 });
+  if (users.length === 0) {
+    return { user: null, reason: "no users exist yet — sign up, then re-run this seed" };
+  }
+  if (users.length === 1) {
+    return { user: users[0], reason: "the only existing user" };
+  }
+  return {
+    user: null,
+    reason:
+      "multiple users exist and WBOS_BOOTSTRAP_OWNER_EMAIL is not set — " +
+      "set it to the intended owner's email and re-run this seed",
+  };
+}
+
+/**
+ * Ensure the designated owner actually holds an OWNER membership.
+ *
+ * Runs on EVERY seed invocation, including when the organization already
+ * exists. The previous version returned early in that case, so an owner who
+ * signed up after the first seed could never be attached by re-running it.
+ */
+async function ensureOwnerMembership(client, organizationId) {
+  const { user, reason } = await resolveBootstrapOwner(client);
+
+  if (!user) {
+    console.log(`Owner not attached: ${reason}.`);
+    return null;
+  }
+
+  const existing = await client.organizationMembership.findFirst({
+    where: { userId: user.id },
+  });
+
+  if (existing) {
+    console.log(
+      `Owner already attached: ${user.email} holds ${existing.role} membership (${reason}).`,
+    );
+    return user;
+  }
+
+  await client.organizationMembership.create({
+    data: { organizationId, userId: user.id, role: "OWNER" },
+  });
+  console.log(`Attached ${user.email} as OWNER (${reason}).`);
+  return user;
+}
+
 async function main() {
   const orgName = process.env.WBOS_SEED_ORGANIZATION_NAME || "My Organization";
 
   const existingOrg = await prisma.organization.findUnique({ where: { id: BOOTSTRAP_ORG_ID } });
   if (existingOrg) {
-    console.log(`Seed skipped: bootstrap organization "${existingOrg.name}" already exists.`);
+    // Reference data is already in place, but still reconcile ownership so
+    // re-running the seed is a valid way to fix a missing OWNER membership.
+    console.log(`Bootstrap organization "${existingOrg.name}" already exists — checking ownership.`);
+    await ensureOwnerMembership(prisma, existingOrg.id);
     return;
   }
 
@@ -141,31 +219,20 @@ async function main() {
       })),
     });
 
-    // Attach any existing Better Auth user as OWNER
-    const firstUser = await tx.user.findFirst({ orderBy: { createdAt: "asc" } });
-    if (firstUser) {
-      const existingMembership = await tx.organizationMembership.findFirst({
-        where: { userId: firstUser.id },
-      });
-      if (!existingMembership) {
-        await tx.organizationMembership.create({
-          data: {
-            organizationId: org.id,
-            userId: firstUser.id,
-            role: "OWNER",
-          },
-        });
-      }
-    }
+    const owner = await ensureOwnerMembership(tx, org.id);
 
     await tx.activityLog.create({
       data: {
         organizationId: org.id,
-        userId: firstUser?.id ?? null,
+        userId: owner?.id ?? null,
         action: "DEVELOPMENT_SEED",
         entityType: "Organization",
         entityId: org.id,
-        summary: `Bootstrap organization created.${firstUser ? ` Attached user ${firstUser.email} as OWNER.` : " No users exist yet — first signup will be auto-attached."}`,
+        summary: `Bootstrap organization created.${
+          owner
+            ? ` Attached user ${owner.email} as OWNER.`
+            : " No owner attached yet — the first user to complete onboarding claims it."
+        }`,
       },
     });
   });
@@ -173,7 +240,10 @@ async function main() {
   console.log(`Bootstrap organization "${orgName}" created (${BOOTSTRAP_ORG_ID}).`);
   const userCount = await prisma.user.count();
   if (userCount === 0) {
-    console.log("No users found. The first user to sign up will automatically become the organization owner.");
+    console.log(
+      "No users found. The first user to complete onboarding becomes OWNER of this organization.\n" +
+        "Set WBOS_BOOTSTRAP_OWNER_EMAIL and re-run this seed to attach a specific account instead.",
+    );
   }
 }
 

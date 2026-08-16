@@ -135,7 +135,19 @@ launch (60/min). Sign-in happens once or twice a day per device (10/min per IP, 
 - [ ] Email/identity provider configured for production (SMTP for verification/reset emails) or a documented decision to run self-managed
 - [ ] Session expiry and revocation behavior verified
 - [ ] Multi-device behavior verified (sign-in on web + mobile concurrently)
-
+- [x] **Day-0 first-owner bootstrap is deterministic** — `WBOS_BOOTSTRAP_OWNER_EMAIL` names the owner;
+      `prisma/seed.mjs` reconciles ownership on **every** run (previously it returned early once the
+      bootstrap organization existed, so an owner who signed up afterwards could never be attached and
+      hit 401 on every org-scoped endpoint). Resolution order: designated email → the only user →
+      refuse to guess. Exact verification step in `PRODUCTION_DEPLOYMENT.md` §10.
+- [x] **Public sign-up no longer grants OWNER** — onboarding attaches a user to an existing organization
+      only while it has **zero** members (true Day-0) or when the email matches
+      `WBOS_BOOTSTRAP_OWNER_EMAIL`. Previously any signup with no membership was auto-attached as OWNER,
+      so anyone who could load the public HTTPS URL could take ownership of the business — ledgers,
+      backups and restore included. 8 regression tests in `src/test/onboarding-service.test.ts`.
+- [ ] Role-scoped user management (invite a warehouse user as MANAGER/STAFF rather than OWNER) — not
+      built; adding a second person today means designating them via `WBOS_BOOTSTRAP_OWNER_EMAIL`, which
+      grants OWNER. Acceptable for the current 2-person team; revisit before adding staff accounts.
 
 ## Backups
 

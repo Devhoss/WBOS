@@ -361,9 +361,75 @@ valid restore point.
 - [ ] A restore test executed against a real package and recorded in PRODUCTION_READINESS
 - [ ] Alerting channel configured; `./scripts/health-alert.sh --test` delivers a message
 
-**Go-live**
-- [ ] First user (OWNER) created, signed in over HTTPS
+**Go-live — establish the first OWNER**
+- [ ] Set `WBOS_BOOTSTRAP_OWNER_EMAIL` in `.env` to the intended owner's email **before** anyone signs up
+- [ ] That person signs up at `https://<domain>/sign-up` and completes onboarding
+- [ ] **Verify the membership exists** (below) — do not skip this; a missing membership looks like an
+      authentication bug rather than a setup step
 - [ ] Mobile app pointed at `https://<domain>` and signed in successfully
+
+### First-owner verification (exact step)
+
+Run this immediately after the owner signs in. It is the single check that proves Day-0 onboarding
+succeeded:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db psql -U wbos -d wbos -c \
+  'SELECT u.email, m.role, m."organizationId"
+     FROM "user" u
+     LEFT JOIN organization_memberships m ON m."userId" = u.id
+    ORDER BY u."createdAt";'
+```
+
+Expected — exactly one row, with a role:
+
+```
+        email         | role  |  organizationId
+----------------------+-------+-------------------
+ owner@yourdomain.com | OWNER | bootstrap-org-001
+```
+
+A row with an empty `role` means that account has **no membership**: the web UI will bounce it to
+`/onboarding`, and every org-scoped API call — `/api/v1/auth/me` and everything the mobile app uses —
+returns **401 Unauthorized**.
+
+Equivalent check from the application side, using a bearer token from a mobile sign-in:
+
+```bash
+curl -s https://<domain>/api/v1/auth/me -H "Authorization: Bearer <token>"
+# expect: {"role":"OWNER","organizationName":"...", ...}   not {"error":"Unauthorized"}
+```
+
+### Fixing a missing owner
+
+`prisma/seed.mjs` reconciles ownership on **every** run, including when the organization already exists,
+so re-running it is the supported repair:
+
+```bash
+# Name the intended owner explicitly, then re-run the seed
+docker compose -f docker-compose.prod.yml exec -T \
+  -e WBOS_BOOTSTRAP_OWNER_EMAIL=owner@yourdomain.com app node prisma/seed.mjs
+```
+
+It resolves the owner deterministically and tells you exactly what it did:
+
+| Situation | Behavior |
+| --------- | -------- |
+| `WBOS_BOOTSTRAP_OWNER_EMAIL` set and that user exists | Attaches them as OWNER |
+| `WBOS_BOOTSTRAP_OWNER_EMAIL` set, user has not signed up yet | Says so; sign up, then re-run |
+| Not set, exactly one user exists | Attaches that user (unambiguous) |
+| Not set, several users exist | **Refuses to guess** and tells you to set the variable |
+| The user already has a membership | No-op, reports the existing role |
+
+### Who else can join
+
+Once the organization has an owner, a new signup is **not** auto-attached: onboarding returns
+"This workspace already has an owner." This is deliberate — sign-up is reachable by anyone who can load
+the public HTTPS URL, and auto-attaching granted OWNER (ledgers, backups, restore) to whoever signed up.
+
+To add a second team member today, name them in `WBOS_BOOTSTRAP_OWNER_EMAIL` and re-run the seed as
+above — note that this grants **OWNER**, so it suits a co-owner rather than a warehouse user. Proper
+role-scoped user management is not built yet; see PRODUCTION_READINESS **Operations**.
 
 ## 11. Release gate
 
