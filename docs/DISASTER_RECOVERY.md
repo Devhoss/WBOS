@@ -79,6 +79,13 @@ records the result. It never touches the production database.
    `$WBOS_BACKUP_DIR/restore-history.json` — the same file the Settings → Backup & Restore page
    (**Last Restore Test**) and `/api/health` read, so a shell-side restore test shows up in the UI.
 
+**Failures are recorded too.** The record is written from the script's exit trap, so a test that dies
+at any step still lands in `restore-history.json` with `result: "failed"` and a `reason`. The UI and
+`/api/health` report the **most recent** record whatever its outcome, and `health-alert.sh` raises a
+`restore_failed` alert. This matters: until 2026-08-16 only successes were recorded and the reader
+skipped back to the last successful run, so a broken restore path kept showing **PASS** — the one
+indicator meant to prove the backups work was the one that could not report that they don't.
+
 ### Usage
 
 ```bash
@@ -108,7 +115,7 @@ docker compose exec -T app ./scripts/restore-test.sh /app/backups/packages/wbos-
 1. Create a backup from the Settings UI (**Backup & Restore → Create Backup Now**) or wait for the daily cron.
 2. Run the restore test against that package (command above).
 3. Confirm the script prints `=== RESTORE TEST PASSED ===`.
-4. Record the result in the **Restore Verification** table in `../../docs/PRODUCTION_READINESS.md`.
+4. Record the result in the **Restore Verification** table in `PRODUCTION_READINESS.md`.
 
 ### Interpreting failures
 
@@ -116,7 +123,7 @@ docker compose exec -T app ./scripts/restore-test.sh /app/backups/packages/wbos-
 | ------- | ------------ |
 | `package not found` / exit 2 | Wrong path; check `/app/backups/packages/`. |
 | `dump is unreadable` | Corrupt package — create a fresh backup, then delete the bad one. |
-| `pg_restore` errors | Version mismatch (restore into same major version as the dump) or missing extension. |
+| `pg_restore` errors | Version mismatch or missing extension. The project standardizes on PostgreSQL **17** everywhere — see `PRODUCTION_DEPLOYMENT.md` §11; `startup-validate.js` warns at boot if the client and server majors differ. |
 | `CREATE DATABASE` permission denied | `WBOS_DATABASE_URL` user lacks `CREATEDB`. |
 | Scratch DB left behind | Add `--keep-scratch` to inspect, then drop manually. |
 
@@ -132,12 +139,12 @@ run migrations, verify. The restore-test above is the safe rehearsal of that pro
 
 ## 4. Remaining gaps (documented, not yet built)
 
-These follow after the DR baseline is proven. They are tracked in `../../docs/PRODUCTION_READINESS.md`:
+These follow after the DR baseline is proven. They are tracked in `PRODUCTION_READINESS.md`:
 
 - Off-host target provisioning + first production-data restore test (this runbook, step 1 & 2).
 - Alerting channel + cron wiring on the production host (script `scripts/health-alert.sh` exists and is validated; the
-  operator configures one channel + the cron line — see Operations → Alerting wiring in `../../docs/PRODUCTION_READINESS.md`).
-- Rate limiting on sign-in + mobile API endpoints — **done 2026-08-10** (in-memory limiter, see Rate limiting section in `../../docs/PRODUCTION_READINESS.md`).
+  operator configures one channel + the cron line — see Operations → Alerting wiring in `PRODUCTION_READINESS.md`).
+- Rate limiting on sign-in + mobile API endpoints — **done 2026-08-10** (in-memory limiter, see Rate limiting section in `PRODUCTION_READINESS.md`).
 - SMTP / password-reset provisioning.
 - Invoice PDF (Playwright/Chromium) verification in the deployed container.
 - Encrypted backup at rest if the off-site target is untrusted.

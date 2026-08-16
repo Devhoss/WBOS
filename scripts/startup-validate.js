@@ -115,12 +115,60 @@ console.log("\n2. Database Connection");
   console.log("\n6. Backup Tools");
 
   const { spawnSync } = await import("child_process");
+  let pgDumpMajor = null;
   for (const tool of BACKUP_TOOLS) {
     const probe = spawnSync(tool, ["--version"], { encoding: "utf-8" });
     if (probe.status === 0) {
-      ok(`${tool} available (${(probe.stdout || "").trim().split("\n")[0]})`);
+      const versionLine = (probe.stdout || "").trim().split("\n")[0];
+      ok(`${tool} available (${versionLine})`);
+      if (tool === "pg_dump") {
+        // "pg_dump (PostgreSQL) 17.2 (Debian 17.2-1.pgdg120+1)" -> 17
+        const m = versionLine.match(/\)\s*(\d+)/) || versionLine.match(/(\d+)\.\d+/);
+        if (m) pgDumpMajor = Number(m[1]);
+      }
     } else {
       fail(`${tool} is NOT available in PATH`);
+    }
+  }
+
+  // ── PostgreSQL client/server major version match ──
+  // A dump taken by pg_dump N cannot be reliably restored into a server older
+  // than N, and pg_dump refuses to dump from a server newer than itself. A
+  // silent mismatch means backups look fine and only fail at restore time —
+  // exactly the failure the DR work exists to prevent.
+  console.log("\n6b. PostgreSQL Version Match");
+  if (pgDumpMajor === null) {
+    warn("Could not determine pg_dump major version — skipping client/server check");
+  } else {
+    try {
+      const { PrismaClient } = await import("@prisma/client");
+      const prisma = new PrismaClient();
+      const rows = await prisma.$queryRaw`SHOW server_version`;
+      await prisma.$disconnect();
+      const serverVersion = String(rows?.[0]?.server_version ?? "");
+      const serverMajor = Number(serverVersion.split(".")[0]);
+      if (!Number.isFinite(serverMajor)) {
+        warn(`Could not parse server_version ("${serverVersion}") — skipping check`);
+      } else if (serverMajor === pgDumpMajor) {
+        ok(`pg_dump ${pgDumpMajor} matches PostgreSQL server ${serverMajor}`);
+      } else if (pgDumpMajor > serverMajor) {
+        // Deliberately a warning, not a failure: the mismatch threatens RESTORE,
+        // not runtime correctness. Refusing to boot would turn a latent DR risk
+        // into an immediate outage — possibly during the emergency deploy that
+        // is trying to fix it.
+        warn(
+          `pg_dump is ${pgDumpMajor} but the server is ${serverMajor}. Dumps taken here ` +
+            `may NOT restore into this server. Align the postgres image major with the ` +
+            `client in the app image (see docs/PRODUCTION_DEPLOYMENT.md §11).`,
+        );
+      } else {
+        warn(
+          `pg_dump is ${pgDumpMajor} but the server is ${serverMajor}. Upgrade the client ` +
+            `tools in the app image to match the server.`,
+        );
+      }
+    } catch (err) {
+      warn(`Could not check PostgreSQL server version: ${err.message}`);
     }
   }
 

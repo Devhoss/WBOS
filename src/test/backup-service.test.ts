@@ -248,6 +248,60 @@ describe("BackupService", () => {
     expect(status.lastRestoreTest!.result).toBe("success");
   });
 
+  it("reports a FAILED restore test instead of an older successful one", async () => {
+    // A shell-side restore test (scripts/restore-test.sh) appends JSONL records
+    // for failures too. Surfacing the last *success* here would keep the Last
+    // Restore Test indicator showing PASS while the restore path is broken —
+    // the exact blind spot this indicator exists to close.
+    await mkdir(backupRoot, { recursive: true });
+    await writeFile(
+      join(backupRoot, "restore-history.json"),
+      [
+        JSON.stringify({
+          at: "2026-08-10T02:00:00.000Z",
+          packageName: "wbos-backup-old.tar.gz",
+          result: "success",
+          performedBy: "restore-test.sh",
+        }),
+        JSON.stringify({
+          at: "2026-08-16T02:00:00.000Z",
+          packageName: "wbos-backup-new.tar.gz",
+          result: "failed",
+          performedBy: "restore-test.sh",
+          reason: "pg_restore failed while restoring the dump into the scratch database",
+        }),
+      ].join("\n"),
+      "utf8",
+    );
+
+    const status = await service.getStatus();
+    expect(status.lastRestoreTest).not.toBeNull();
+    expect(status.lastRestoreTest!.result).toBe("failed");
+    expect(status.lastRestoreTest!.packageName).toBe("wbos-backup-new.tar.gz");
+    expect(status.lastRestoreTest!.reason).toContain("pg_restore failed");
+  });
+
+  it("ignores malformed history lines when resolving the latest restore test", async () => {
+    await mkdir(backupRoot, { recursive: true });
+    await writeFile(
+      join(backupRoot, "restore-history.json"),
+      [
+        JSON.stringify({
+          at: "2026-08-16T02:00:00.000Z",
+          packageName: "wbos-backup-good.tar.gz",
+          result: "success",
+          performedBy: "restore-test.sh",
+        }),
+        "{ not json",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const status = await service.getStatus();
+    expect(status.lastRestoreTest!.packageName).toBe("wbos-backup-good.tar.gz");
+    expect(status.lastRestoreTest!.result).toBe("success");
+  });
+
   it("rejects restore of an unknown package", async () => {
     await expect(service.restoreBackup(makeContext(), "wbos-backup-doesnotexist.tar.gz", "RESTORE")).rejects.toBeInstanceOf(BusinessError);
   });
@@ -417,8 +471,13 @@ describe("BackupService", () => {
 
     await expect(service.restoreBackup(makeContext(), pkg.fileName, "RESTORE")).rejects.toThrow("connection failed");
 
+    // The failure is recorded AND surfaced. This previously asserted null,
+    // which meant a failed restore left the last successful run showing as the
+    // Last Restore Test indicator — reporting PASS while restore was broken.
     const status = await service.getStatus();
-    expect(status.lastRestoreTest).toBeNull();
+    expect(status.lastRestoreTest).not.toBeNull();
+    expect(status.lastRestoreTest!.result).toBe("failed");
+    expect(status.lastRestoreTest!.packageName).toBe(pkg.fileName);
   });
 
   it("staging directory is cleaned up after create", async () => {

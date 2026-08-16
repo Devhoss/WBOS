@@ -133,6 +133,8 @@ jpath() {
     backups.latestAgeHours)   sed -n 's/.*"latestAgeHours":\([0-9][0-9]*\|null\).*/\1/p' "$file" ;;
     backups.stale)            sed -n 's/.*"backups":{[^}]*"stale":\(true\|false\).*/\1/p' "$file" ;;
     backups.lastRestoreTest)  sed -n 's/.*"lastRestoreTest":\(null\|{[^}]*}\).*/\1/p' "$file" ;;
+    backups.lastRestoreTest.result) sed -n 's/.*"lastRestoreTest":{[^}]*"result":"\([^"]*\)".*/\1/p' "$file" ;;
+    backups.lastRestoreTest.reason) sed -n 's/.*"lastRestoreTest":{[^}]*"reason":"\([^"]*\)".*/\1/p' "$file" ;;
     storage.uploads.pctOfDisk)   sed -n 's/.*"uploads":{[^}]*"pctOfDisk":\([0-9][0-9]*\|null\).*/\1/p' "$file" ;;
     storage.uploads.sizeBytes)   sed -n 's/.*"uploads":{[^}]*"sizeBytes":\([0-9][0-9]*\).*/\1/p' "$file" ;;
     storage.uploads.fileCount)   sed -n 's/.*"uploads":{[^}]*"fileCount":\([0-9][0-9]*\).*/\1/p' "$file" ;;
@@ -309,8 +311,24 @@ else
   check_cond backup_tools 0 "Backup tools missing or broken." "All backup tools are available again."
 fi
 
+RESTORE=$(jpath "$TMP" backups.lastRestoreTest)
+
+# A restore test that FAILED is always an alert: the backups are not known to be
+# restorable. This is not gated behind WBOS_ALERT_ALERT_ON_NO_RESTORE_TEST —
+# that knob is about never having tested, which is a different (softer) state.
+if [ -n "$RESTORE" ] && [ "$RESTORE" != "null" ]; then
+  RESTORE_RESULT=$(jpath "$TMP" backups.lastRestoreTest.result)
+  if [ -n "$RESTORE_RESULT" ] && [ "$RESTORE_RESULT" != "success" ]; then
+    RESTORE_REASON=$(jpath "$TMP" backups.lastRestoreTest.reason)
+    check_cond restore_failed 1 \
+      "Last restore test FAILED (${RESTORE_RESULT})${RESTORE_REASON:+: $RESTORE_REASON}. Backups are not proven restorable." \
+      "Latest restore test passed again."
+  else
+    check_cond restore_failed 0 "Last restore test FAILED." "Latest restore test passed again."
+  fi
+fi
+
 if [ "$ALERT_NO_RESTORE" = "1" ]; then
-  RESTORE=$(jpath "$TMP" backups.lastRestoreTest)
   if [ -z "$RESTORE" ] || [ "$RESTORE" = "null" ]; then
     check_cond restore_untested 1 "No restore test on record — run scripts/restore-test.sh and verify a package." \
       "A restore test is on record."

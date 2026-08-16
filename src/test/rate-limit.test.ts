@@ -138,17 +138,75 @@ describe("rateLimitResponse", () => {
 });
 
 describe("getClientIp", () => {
-  it("takes the leftmost X-Forwarded-For entry", () => {
-    const req = request("/x", { headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.2" } });
-    expect(getClientIp(req.headers)).toBe("203.0.113.7");
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
   });
 
-  it("skips the unknown placeholder", () => {
-    const req = request("/x", { headers: { "x-forwarded-for": "unknown, 10.0.0.2" } });
+  it("takes the rightmost X-Forwarded-For entry behind one trusted proxy", () => {
+    const req = request("/x", { headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.2" } });
     expect(getClientIp(req.headers)).toBe("10.0.0.2");
   });
 
-  it("falls back to X-Real-IP", () => {
+  it("ignores a forged leftmost entry so per-IP limits cannot be bypassed", () => {
+    // The attacker varies the forged prefix on every request; the proxy-appended
+    // rightmost entry stays constant, so all of these share one bucket.
+    const forged = ["1.1.1.1", "2.2.2.2", "3.3.3.3"].map((fake) =>
+      getClientIp(
+        request("/x", { headers: { "x-forwarded-for": `${fake}, 198.51.100.5` } }).headers,
+      ),
+    );
+    expect(forged).toEqual(["198.51.100.5", "198.51.100.5", "198.51.100.5"]);
+  });
+
+  it("counts hops from the right when several proxies are trusted", () => {
+    process.env.WBOS_TRUSTED_PROXY_HOPS = "2";
+    const req = request("/x", {
+      headers: { "x-forwarded-for": "1.1.1.1, 203.0.113.7, 10.0.0.2" },
+    });
+    expect(getClientIp(req.headers)).toBe("203.0.113.7");
+  });
+
+  it("fails closed when the chain is shorter than the configured hop count", () => {
+    process.env.WBOS_TRUSTED_PROXY_HOPS = "2";
+    const req = request("/x", { headers: { "x-forwarded-for": "203.0.113.7" } });
+    expect(getClientIp(req.headers)).toBeNull();
+  });
+
+  it("ignores forwarding headers entirely when no proxy is trusted", () => {
+    process.env.WBOS_TRUSTED_PROXY_HOPS = "0";
+    const req = request("/x", { headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.2" } });
+    expect(getClientIp(req.headers)).toBeNull();
+  });
+
+  it("rejects the unknown placeholder rather than falling back to another hop", () => {
+    const req = request("/x", { headers: { "x-forwarded-for": "10.0.0.2, unknown" } });
+    expect(getClientIp(req.headers)).toBeNull();
+  });
+
+  it("rejects a non-address value in the trusted position", () => {
+    const req = request("/x", { headers: { "x-forwarded-for": "10.0.0.2, not-an-ip" } });
+    expect(getClientIp(req.headers)).toBeNull();
+  });
+
+  it("strips a port from the trusted entry", () => {
+    const req = request("/x", { headers: { "x-forwarded-for": "203.0.113.7:44321" } });
+    expect(getClientIp(req.headers)).toBe("203.0.113.7");
+  });
+
+  it("unwraps a bracketed IPv6 address with a port", () => {
+    const req = request("/x", { headers: { "x-forwarded-for": "[2001:db8::1]:44321" } });
+    expect(getClientIp(req.headers)).toBe("2001:db8::1");
+  });
+
+  it("does not trust X-Real-IP by default", () => {
+    const req = request("/x", { headers: { "x-real-ip": "203.0.113.9" } });
+    expect(getClientIp(req.headers)).toBeNull();
+  });
+
+  it("uses X-Real-IP when the deployment opts in", () => {
+    process.env.WBOS_TRUST_X_REAL_IP = "1";
     const req = request("/x", { headers: { "x-real-ip": "203.0.113.9" } });
     expect(getClientIp(req.headers)).toBe("203.0.113.9");
   });

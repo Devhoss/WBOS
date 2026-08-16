@@ -58,13 +58,61 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 BACKUP_ROOT="${WBOS_BACKUP_DIR:-./backups}"
+HISTORY_FILE="$BACKUP_ROOT/restore-history.json"
 STAGING=""
 RESULT="failed"
-REASON=""
+REASON="test did not complete"
+RECORDED=0
+DUMP_OBJECTS=0
+RESTORED_ORGS=0
+UPLOADS_RESTORED="n/a"
 
-# Cleanup runs even on failure: drop the scratch DB and remove staging.
+# Append one JSONL record to restore-history.json — the same file the Settings
+# UI (Last Restore Test) and /api/health read.
+#
+# This runs for FAILURES as well as successes. A failed restore test that is
+# never recorded leaves the last successful run showing in the UI, so the one
+# signal that is supposed to prove the backups work would keep saying "PASS"
+# while the restore path is broken.
+record_result() {
+  # Plain `if` rather than `[ ... ] && return 0`: under `set -e` a false test
+  # makes the AND-list return non-zero, which can abort the caller.
+  if [ "$RECORDED" = "1" ]; then
+    return 0
+  fi
+  RECORDED=1
+  local record
+  record=$(node -e '
+    const entry = {
+      at: new Date().toISOString(),
+      packageName: process.argv[1],
+      packageBytes: Number(process.argv[2]),
+      result: process.argv[3],
+      performedBy: "restore-test.sh",
+      dumpObjects: Number(process.argv[4]),
+      restoredOrganizations: Number(process.argv[5]),
+      uploadsFiles: process.argv[6] === "n/a" ? null : Number(process.argv[6]),
+      database: process.argv[7],
+      reason: process.argv[8] || null,
+    };
+    process.stdout.write(JSON.stringify(entry));
+  ' "$(basename "$PACKAGE")" "$(stat -c%s "$PACKAGE" 2>/dev/null || stat -f%z "$PACKAGE" 2>/dev/null || echo 0)" \
+    "$RESULT" "$DUMP_OBJECTS" "$RESTORED_ORGS" "$UPLOADS_RESTORED" "${SCRATCH_DB:-}" "$REASON" 2>/dev/null) || return 0
+  mkdir -p "$(dirname "$HISTORY_FILE")" 2>/dev/null || return 0
+  printf '%s\n' "$record" >> "$HISTORY_FILE" 2>/dev/null || return 0
+  echo "  Recorded ($RESULT) in: $HISTORY_FILE"
+}
+
+# Cleanup runs even on failure: record the outcome, drop the scratch DB, and
+# remove staging.
 cleanup() {
   local code=$?
+  if [ "$code" -ne 0 ] && [ "$RESULT" != "success" ]; then
+    echo ""
+    echo "=== RESTORE TEST FAILED ==="
+    echo "  Reason: $REASON"
+  fi
+  record_result
   if [ -n "${SCRATCH_URL:-}" ] && [ "$KEEP_SCRATCH" = "0" ]; then
     psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$SCRATCH_DB\";" >/dev/null 2>&1 \
       && echo "  Dropped scratch database: $SCRATCH_DB" || true
@@ -103,7 +151,8 @@ echo "--- 1/6 Extract package ---"
 tar xzf "$PACKAGE" -C "$STAGING"
 PACKAGE_DIR=$(find "$STAGING" -maxdepth 1 -type d -name 'wbos-backup-*' | head -1)
 if [ -z "$PACKAGE_DIR" ]; then
-  echo "Error: package does not contain a wbos-backup-* directory." >&2
+  REASON="package does not contain a wbos-backup-* directory"
+  echo "Error: $REASON." >&2
   exit 1
 fi
 
@@ -123,29 +172,35 @@ echo "  appVersion:    $(echo "$MANIFEST" | node -e 'const d=JSON.parse(require(
 
 DUMP_FILE="$PACKAGE_DIR/$DB_FILE"
 if [ ! -f "$DUMP_FILE" ]; then
-  echo "Error: database dump missing in package: $DUMP_FILE" >&2
+  REASON="database dump missing in package: $DB_FILE"
+  echo "Error: $REASON" >&2
   exit 1
 fi
 
 echo "--- 3/6 Verify dump readable (pg_restore --list) ---"
+REASON="dump is unreadable (pg_restore --list failed)"
 DUMP_OBJECTS=$(pg_restore --list "$DUMP_FILE" | grep -v '^;' | grep -v '^$' | wc -l | tr -d ' ')
 echo "  Dump objects listed: $DUMP_OBJECTS"
 if [ "$DUMP_OBJECTS" -eq 0 ]; then
-  echo "Error: dump is unreadable (pg_restore --list produced no objects)." >&2
+  REASON="dump is unreadable (pg_restore --list produced no objects)"
+  echo "Error: $REASON." >&2
   exit 1
 fi
 
 echo "--- 4/6 Create scratch database ---"
+REASON="could not create scratch database (does the DB user have CREATEDB?)"
 psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$SCRATCH_DB\";" >/dev/null
 echo "  Created: $SCRATCH_DB"
 
 echo "--- 5/6 Restore into scratch database ---"
+REASON="pg_restore failed while restoring the dump into the scratch database"
 pg_restore --clean --if-exists --no-owner --no-privileges -d "$SCRATCH_URL" "$DUMP_FILE"
+REASON="restore completed but the Organization table could not be queried"
 RESTORED_ORGS=$(psql "$SCRATCH_URL" -At -c 'SELECT count(*) FROM "Organization";' | tr -d ' ')
 echo "  Restore OK. Organizations in scratch DB: $RESTORED_ORGS"
 
-UPLOADS_RESTORED="n/a"
 if [ -n "$UPLOADS_FILE" ]; then
+  REASON="uploads archive present in the manifest but could not be extracted"
   UPLOADS_STAGE="${STAGING}/uploads-out"
   mkdir -p "$UPLOADS_STAGE"
   tar xzf "$PACKAGE_DIR/$UPLOADS_FILE" -C "$UPLOADS_STAGE"
@@ -155,24 +210,8 @@ fi
 
 echo "--- 6/6 Record result ---"
 RESULT="success"
-HISTORY_FILE="$BACKUP_ROOT/restore-history.json"
-RECORD=$(node -e '
-  const entry = {
-    at: new Date().toISOString(),
-    packageName: process.argv[1],
-    packageBytes: Number(process.argv[2]),
-    result: process.argv[3],
-    performedBy: "restore-test.sh",
-    dumpObjects: Number(process.argv[4]),
-    restoredOrganizations: Number(process.argv[5]),
-    uploadsFiles: process.argv[6] === "n/a" ? null : Number(process.argv[6]),
-    database: process.argv[7],
-  };
-  process.stdout.write(JSON.stringify(entry));
-' "$(basename "$PACKAGE")" "$(stat -c%s "$PACKAGE" 2>/dev/null || echo 0)" "$RESULT" "$DUMP_OBJECTS" "$RESTORED_ORGS" "$UPLOADS_RESTORED" "$SCRATCH_DB")
-mkdir -p "$(dirname "$HISTORY_FILE")"
-printf '%s\n' "$RECORD" >> "$HISTORY_FILE"
-echo "  Recorded in: $HISTORY_FILE"
+REASON=""
+record_result
 
 if [ "$KEEP_SCRATCH" = "0" ]; then
   echo ""

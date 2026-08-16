@@ -123,7 +123,16 @@ export function BackupPanel({ backups, lastBackupAt, lastRestoreTest, canRestore
               {lastRestoreTest ? formatDate(lastRestoreTest.at) : "Never"}
             </p>
             {lastRestoreTest ? (
-              <p className="text-xs text-muted-foreground">{lastRestoreTest.packageName} — Successful</p>
+              lastRestoreTest.result === "success" ? (
+                <p className="text-xs text-muted-foreground">
+                  {lastRestoreTest.packageName} — Successful
+                </p>
+              ) : (
+                <p className="text-xs font-medium text-destructive">
+                  {lastRestoreTest.packageName} — FAILED
+                  {lastRestoreTest.reason ? `: ${lastRestoreTest.reason}` : ""}
+                </p>
+              )
             ) : (
               <p className="text-xs text-muted-foreground">
                 A backup that has never been restored is only a theory.

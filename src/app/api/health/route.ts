@@ -6,12 +6,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/infrastructure/database/prisma";
 import { BackupService } from "@/domains/backups/services/backup-service";
 import { resolveStorageMinFreeBytes } from "@/infrastructure/storage/assert-capacity";
+import {
+  evaluateBackupFreshness,
+  resolveBackupStalenessHours,
+} from "@/infrastructure/health/backup-freshness";
 
 export const dynamic = "force-dynamic";
 
 const startTime = Date.now();
-
-const BACKUP_STALENESS_HOURS = 48;
 
 export async function GET() {
   const checks: Record<string, unknown> = {};
@@ -130,10 +132,15 @@ export async function GET() {
     latestBackupMtime > 0 ? Math.round((Date.now() - latestBackupMtime) / 3600000) : null;
   backupChecks.latestAgeHours = latestAgeHours;
 
-  const backupStale = latestAgeHours === null || latestAgeHours > BACKUP_STALENESS_HOURS;
-  backupChecks.stale = backupStale;
-  backupChecks.stalenessThresholdHours = BACKUP_STALENESS_HOURS;
-  if (backupStale) {
+  // See evaluateBackupFreshness: "never backed up" is a Day-0 bootstrap state
+  // that must NOT fail the container healthcheck, while a genuinely stale
+  // backup must. Alerting covers both.
+  const stalenessThresholdHours = resolveBackupStalenessHours();
+  const freshness = evaluateBackupFreshness(latestAgeHours, stalenessThresholdHours);
+  backupChecks.neverBackedUp = freshness.neverBackedUp;
+  backupChecks.stale = freshness.stale;
+  backupChecks.stalenessThresholdHours = stalenessThresholdHours;
+  if (freshness.unhealthy) {
     healthy = false;
   }
 

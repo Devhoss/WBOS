@@ -1,6 +1,17 @@
-# Deployment Guide
+# Deployment Guide (homelab / reference)
 
 > Production deployment documentation for WBOS (Wholesale Business Operating System).
+
+> **⚠ Start with [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md) instead.**
+> That is the current production runbook: it deploys the image published to GHCR
+> by CI (`.github/workflows/docker.yml`).
+>
+> This document predates the CI/GHCR pipeline and describes the older workflow of
+> building an image locally, `docker save`-ing it, and copying it to the server.
+> That flow still works for an air-gapped homelab box, and the **Database**,
+> **Restore**, **Recovery**, **Reverse Proxy**, and **Troubleshooting** sections
+> remain the most detailed reference we have — but where the two documents
+> disagree about how a deploy happens, `PRODUCTION_DEPLOYMENT.md` wins.
 
 ---
 

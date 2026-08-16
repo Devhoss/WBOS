@@ -13,6 +13,8 @@ set -euo pipefail
 #   WBOS_STORAGE_ROOT       — storage root (for the pre-deploy backup)
 #   WBOS_DATABASE_URL       — database URL for the pre-deploy backup
 #   WBOS_BACKUP_SYNC_TARGET — if set, sync backups off-host after starting
+#   WBOS_IMAGE_TAG          — GHCR image tag to deploy (default: latest).
+#                             Set to a commit SHA to redeploy/roll back to it.
 
 cd "$(dirname "$0")/.."
 
@@ -32,11 +34,17 @@ else
   echo "  Skipped (WBOS_DATABASE_URL not set — set it to take a pre-deploy backup)"
 fi
 
-echo "--- 3/6 Build ---"
-npm run build >/dev/null && echo "  ✓ build" || { echo "  ✗ build failed"; exit 1; }
+echo "--- 3/6 Pull image ---"
+# The app service runs a PREBUILT image from GHCR (published by CI), not a local
+# build — docker-compose.prod.yml has `image:` and no `build:`, so `up --build`
+# is a no-op and would silently redeploy whatever stale `latest` is on this host.
+# Pull explicitly so the deploy actually picks up the current image.
+echo "  Image tag: ${WBOS_IMAGE_TAG:-latest}"
+docker compose -f docker-compose.prod.yml pull \
+  && echo "  ✓ image pulled" || { echo "  ✗ image pull failed"; exit 1; }
 
 echo "--- 4/6 Start stack ---"
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d
 
 echo "--- 5/6 Health check ---"
 sleep 5

@@ -202,7 +202,10 @@ async function getHealth() {
     blocks.push({
       label: "Last Restore Test",
       value: status.lastRestoreTest
-        ? `${status.lastRestoreTest.at} — ${status.lastRestoreTest.packageName}`
+        ? `${status.lastRestoreTest.at} — ${status.lastRestoreTest.packageName}` +
+          (status.lastRestoreTest.result === "success"
+            ? ""
+            : ` — FAILED${status.lastRestoreTest.reason ? `: ${status.lastRestoreTest.reason}` : ""}`)
         : "Never restored",
       ok: status.lastRestoreTest?.result === "success",
       icon: <RefreshCw className="size-5" />,

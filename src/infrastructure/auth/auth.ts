@@ -25,7 +25,24 @@ export const auth = betterAuth({
     enabled: false,
   },
   advanced: {
-    disableCSRFCheck: true,
+    // ⚠ SECURITY-RELEVANT — see docs/CSRF_DECISION.md before changing.
+    //
+    // Introduced in commit afa4efc alongside the mobile Bearer-token work. In
+    // better-auth 1.6.x this flag sets `skipCSRFCheck`, which makes
+    // `validateOrigin()` return immediately — so it disables the
+    // Origin/Referer-vs-trustedOrigins check for /api/auth/*, not just the
+    // Fetch-Metadata form check the name suggests.
+    //
+    // Current residual protection is the session cookie's SameSite=Lax default,
+    // which stops a cross-site POST from carrying credentials at all.
+    //
+    // Analysis in docs/CSRF_DECISION.md concludes this flag is very likely no
+    // longer needed (Bearer requests send no cookie, and validateOrigin already
+    // skips cookieless requests), but flipping it changes browser auth behavior
+    // and must be verified against web + mobile before go-live. It is therefore
+    // env-gated with the existing behavior as the default, so enabling the check
+    // is a config change that can be rolled back without a redeploy.
+    disableCSRFCheck: process.env.BETTER_AUTH_DISABLE_CSRF !== "0",
   },
 });
 

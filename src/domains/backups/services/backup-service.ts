@@ -64,7 +64,16 @@ export type BackupPackageMeta = {
 
 export type BackupStatus = {
   lastBackupAt: string | null;
-  lastRestoreTest: { at: string; packageName: string; result: string } | null;
+  /**
+   * The MOST RECENT restore test, whatever its outcome — check `result` before
+   * treating it as proof the backups are restorable.
+   */
+  lastRestoreTest: {
+    at: string;
+    packageName: string;
+    result: string;
+    reason?: string | null;
+  } | null;
 };
 
 type RestoreHistoryEntry = {
@@ -72,6 +81,7 @@ type RestoreHistoryEntry = {
   packageName: string;
   result: string;
   performedBy: string;
+  reason?: string | null;
 };
 
 export type ToolCheck = {
@@ -197,13 +207,20 @@ export class BackupService {
     if (existsSync(this.restoreHistoryFile)) {
       const raw = await readFile(this.restoreHistoryFile, "utf8");
       const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+      // Report the LATEST entry regardless of result. Skipping ahead to the last
+      // successful run would keep showing a stale "PASS" after the restore path
+      // had started failing — which is precisely the failure this indicator
+      // exists to catch.
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
           const entry = JSON.parse(lines[i]) as RestoreHistoryEntry;
-          if (entry.result === "success") {
-            lastRestoreTest = { at: entry.at, packageName: entry.packageName, result: entry.result };
-            break;
-          }
+          lastRestoreTest = {
+            at: entry.at,
+            packageName: entry.packageName,
+            result: entry.result,
+            reason: entry.reason ?? null,
+          };
+          break;
         } catch {
           // skip malformed lines
         }

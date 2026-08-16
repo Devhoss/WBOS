@@ -9,7 +9,16 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    # PostgreSQL 17 is the standard across the whole project: CI e2e, the
+    # restore-test rehearsals, and the postgresql-client-17 installed in the app
+    # image. Keep them on the SAME major — pg_dump refuses to dump from a newer
+    # server and pg_restore cannot reliably load into an older one, so a split
+    # silently breaks disaster recovery.
+    #
+    # ⚠ Changing this major on an EXISTING deployment is a data-directory
+    # migration, not an image swap: PostgreSQL refuses to start on a data dir
+    # written by a different major. See docs/PRODUCTION_DEPLOYMENT.md §11.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     container_name: wbos-db
     restart: unless-stopped
     environment:
@@ -33,7 +42,9 @@ services:
         max-file: "3"
 
   app:
-    image: ghcr.io/devhoss/wbos:latest
+    # Published by .github/workflows/docker.yml on every green push to main.
+    # Pin WBOS_IMAGE_TAG to a commit SHA to roll back: WBOS_IMAGE_TAG=<sha>
+    image: ghcr.io/devhoss/wbos:${WBOS_IMAGE_TAG:-latest}
     container_name: wbos-app
     restart: unless-stopped
     depends_on:

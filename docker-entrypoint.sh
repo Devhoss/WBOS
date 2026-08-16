@@ -73,9 +73,41 @@ if ! node /app/scripts/startup-validate.js; then
   exit 1
 fi
 
-# Apply database migrations
+# Apply database migrations.
+#
+# This must FAIL the container on error. Do not pipe `prisma migrate deploy`
+# into grep: a pipeline reports the exit status of the LAST command, so a failed
+# migration would look successful and the app would boot against a half-migrated
+# database. Capture the output, check the real exit code, then filter for noise.
 echo "[entrypoint] Running database migrations..."
-npx prisma migrate deploy --skip-generate 2>&1 | grep -v "already exists" || true
+MIGRATE_LOG=$(mktemp)
+set +e
+# NOTE: no --skip-generate. `prisma migrate deploy` does not accept that flag
+# (only `migrate dev` does) and exits with a usage error if given it. Combined
+# with the old `| grep … || true` pipeline this meant migrations had NEVER been
+# applied by the entrypoint — the failure was swallowed and "Migrations
+# complete." printed regardless. deploy does not run generate anyway; the client
+# is generated at image build time.
+npx prisma migrate deploy >"$MIGRATE_LOG" 2>&1
+MIGRATE_STATUS=$?
+set -e
+
+if [ "$MIGRATE_STATUS" -ne 0 ]; then
+  echo ""
+  echo "=========================================="
+  echo "  ✗ DATABASE MIGRATION FAILED (exit $MIGRATE_STATUS)"
+  echo "=========================================="
+  cat "$MIGRATE_LOG"
+  rm -f "$MIGRATE_LOG"
+  echo ""
+  echo "  The application will NOT start against a half-migrated database."
+  echo "  Restore the pre-deploy backup or fix the migration, then redeploy."
+  echo ""
+  exit 1
+fi
+
+grep -v "already exists" "$MIGRATE_LOG" || true
+rm -f "$MIGRATE_LOG"
 echo "[entrypoint] Migrations complete."
 
 # Start the application
