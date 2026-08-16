@@ -216,6 +216,61 @@ describe("getClientIp", () => {
   });
 });
 
+describe("per-IP auth limits are scoped per endpoint", () => {
+  it("sign-in attempts do not consume the password-reset budget", async () => {
+    // The realistic recovery path: mistype the password several times, then
+    // click "Forgot password?". With a single shared per-IP bucket the reset
+    // request was refused with 429 and the user could not recover at all.
+    const ipLimiter = new RateLimiter();
+    const inner = vi.fn(async () => new Response(null, { status: 401 }));
+    const handler = withAuthRateLimit(inner, { ipLimiter });
+    const headers = { "x-forwarded-for": "203.0.113.77" };
+
+    // Six failed sign-ins — under that endpoint's own limit of 10.
+    for (let i = 0; i < 6; i++) {
+      const res = await handler(
+        request("/api/auth/sign-in/email", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ email: `user${i}@example.com`, password: "wrong" }),
+        }),
+      );
+      expect(res.status).not.toBe(429);
+    }
+
+    // The reset request must still be allowed (its own limit is 5, untouched).
+    const reset = await handler(
+      request("/api/auth/request-password-reset", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ email: "user@example.com" }),
+      }),
+    );
+    expect(reset.status).not.toBe(429);
+  });
+
+  it("still limits a single endpoint once its own budget is spent", async () => {
+    const ipLimiter = new RateLimiter();
+    const inner = vi.fn(async () => new Response(null, { status: 200 }));
+    const handler = withAuthRateLimit(inner, { ipLimiter });
+    const headers = { "x-forwarded-for": "203.0.113.78" };
+
+    const send = () =>
+      handler(
+        request("/api/auth/request-password-reset", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ email: "user@example.com" }),
+        }),
+      );
+
+    for (let i = 0; i < 5; i++) {
+      expect((await send()).status).not.toBe(429);
+    }
+    expect((await send()).status).toBe(429);
+  });
+});
+
 describe("accountRateLimitOrNull", () => {
   const deps = (limiter: RateLimiter) => ({ limiter });
 

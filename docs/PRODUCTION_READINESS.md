@@ -102,6 +102,13 @@ Chosen limits (sliding window; a request at/below the limit is allowed):
 | per-account | `POST /api/v1/notifications/read-all` · `clear-read` · `DELETE [id]` | 60 / 60s |
 | per-account | `GET /api/v1/auth/me` | 60 / 60s |
 
+**Buckets are scoped per endpoint** (`ip:<path>:<ip>`). They were briefly keyed on the IP alone, which
+meant every auth endpoint shared one counter while each request was still judged against its own limit —
+so a user who mistyped their password a few times (allowed, limit 10) was then refused a password reset
+with 429, because the shared counter had already passed that endpoint's limit of 5. Found 2026-08-16 by
+end-to-end verification of the recovery flow; per-account/per-email limits were unaffected throughout and
+remain the real brute-force control.
+
 429 responses include `Retry-After` (seconds, RFC 9110) and `X-Retry-After` (milliseconds), plus a JSON body with
 `code: "RATE_LIMITED"`.
 

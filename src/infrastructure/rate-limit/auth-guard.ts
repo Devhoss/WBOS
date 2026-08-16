@@ -51,7 +51,18 @@ export function withAuthRateLimit(
     if (ipRule) {
       const ip = getClientIp(req.headers);
       if (ip) {
-        const result = ipBucket.consume(`ip:${ip}`, ipRule);
+        // Key by endpoint AND IP. A single `ip:<ip>` bucket was shared by every
+        // auth endpoint while each request was still judged against its own
+        // endpoint's limit, so unrelated traffic consumed another endpoint's
+        // budget. That broke password recovery in the most likely case: a user
+        // who mistypes their password a few times (allowed, limit 10) then
+        // clicks "Forgot password?" and is refused with 429 because the shared
+        // counter had already passed that endpoint's limit of 5.
+        //
+        // Per-endpoint buckets are also what the documented limits table
+        // describes. Per-account/per-email limits are unaffected and remain the
+        // real brute-force control.
+        const result = ipBucket.consume(`ip:${path}:${ip}`, ipRule);
         if (!result.allowed) {
           return rateLimitResponse(
             result,
