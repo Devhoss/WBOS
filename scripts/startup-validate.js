@@ -71,6 +71,53 @@ if (csrfDisabled) {
   }
 }
 
+// ── Password recovery / SMTP ──
+// Mirrors resolveSmtpConfig() in src/infrastructure/email/config.ts. Duplicated
+// deliberately: this script runs before the bundle is loaded and must not
+// import from src/.
+//
+// WBOS_SMTP_HOST is the switch. Unset means password recovery is intentionally
+// off and the app runs normally. Set-but-incomplete is an operator mistake that
+// would only surface when somebody is already locked out, so it fails startup
+// while the deploy is still in front of you.
+const smtpHost = (process.env.WBOS_SMTP_HOST ?? "").trim();
+if (smtpHost === "") {
+  warn(
+    "SMTP is not configured — password recovery is DISABLED. " +
+      "The forgot-password page says so; set WBOS_SMTP_HOST to enable it.",
+  );
+} else {
+  const smtpMissing = [];
+  const portRaw = (process.env.WBOS_SMTP_PORT ?? "").trim() || "587";
+  const port = Number(portRaw);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    smtpMissing.push(`WBOS_SMTP_PORT (invalid: "${portRaw}")`);
+  }
+  if ((process.env.WBOS_SMTP_FROM ?? "").trim() === "") {
+    smtpMissing.push("WBOS_SMTP_FROM");
+  }
+  const smtpUser = (process.env.WBOS_SMTP_USER ?? "").trim();
+  const smtpPass = process.env.WBOS_SMTP_PASSWORD ?? "";
+  if (smtpUser !== "" && smtpPass === "") {
+    smtpMissing.push("WBOS_SMTP_PASSWORD (set because WBOS_SMTP_USER is set)");
+  }
+  if (smtpUser === "" && smtpPass !== "") {
+    smtpMissing.push("WBOS_SMTP_USER (set because WBOS_SMTP_PASSWORD is set)");
+  }
+
+  if (smtpMissing.length > 0) {
+    fail(
+      `SMTP is partially configured (WBOS_SMTP_HOST is set) but incomplete: ${smtpMissing.join(", ")}. ` +
+        "Complete it, or unset WBOS_SMTP_HOST to run without password recovery.",
+    );
+  } else {
+    ok(
+      `Password recovery enabled via SMTP ${smtpHost}:${port}` +
+        `${smtpUser ? ` as ${smtpUser}` : " (no auth)"}`,
+    );
+  }
+}
+
 // Trusted-proxy hop count drives per-IP rate limiting (see infrastructure/rate-limit/ip.ts)
 const hops = process.env.WBOS_TRUSTED_PROXY_HOPS;
 if (hops === "0") {

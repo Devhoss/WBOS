@@ -251,6 +251,82 @@ the rightmost entry is the trustworthy one. That is one hop, hence `WBOS_TRUSTED
 Cloudflare or a load balancer in front means **two** hops — increment it, or per-IP rate limiting keys on
 the wrong address.
 
+## 6b. SMTP and password recovery
+
+Without SMTP there is **no way to recover a forgotten password** — WBOS has no other reset path, so a
+forgotten owner password is an unrecoverable lockout. Configuring it is strongly recommended before
+go-live.
+
+`WBOS_SMTP_HOST` is the switch:
+
+| State | Behavior |
+| ----- | -------- |
+| Unset | Password recovery is off. The app runs normally; `/forgot-password` says recovery is unavailable rather than pretending to send mail. Startup logs a warning. |
+| Set and complete | Recovery enabled. Startup logs `Password recovery enabled via SMTP <host>:<port>`. |
+| Set but incomplete | Startup **fails** and names the missing variables. A half-configured mailer would otherwise only reveal itself when someone is already locked out. |
+
+```dotenv
+WBOS_SMTP_HOST="smtp.example.com"
+WBOS_SMTP_PORT="587"                                # 587 STARTTLS (default) / 465 implicit TLS
+WBOS_SMTP_FROM="WBOS <no-reply@yourdomain.com>"     # required
+WBOS_SMTP_USER="apikey"                             # optional, but with PASSWORD
+WBOS_SMTP_PASSWORD="..."                            # never committed; .env only
+# WBOS_RESET_TOKEN_TTL_SECONDS="3600"               # link lifetime, default 1 hour
+```
+
+The integration is plain SMTP via Nodemailer with no provider-specific code, so any SMTP service works
+(Resend, Postmark, SES, Mailgun, Fastmail, Google Workspace). The `From` address must be one the provider
+is allowed to send as, or mail will be silently dropped or spam-filed — check SPF/DKIM for your domain.
+
+### Example: Resend (the chosen production provider)
+
+```dotenv
+WBOS_SMTP_HOST="smtp.resend.com"
+WBOS_SMTP_PORT="465"                                 # implicit TLS; 587 for STARTTLS
+WBOS_SMTP_USER="resend"                              # literally the word "resend"
+WBOS_SMTP_PASSWORD="re_..."                          # the Resend API key — from the secret store
+WBOS_SMTP_FROM="WBOS <no-reply@yourdomain.com>"      # must be on a domain verified in Resend
+```
+
+Nothing here is Resend-specific in code — these are the same four variables any provider uses, so
+switching later is a configuration change with no redeploy of application logic.
+
+Two provider-side prerequisites, both needing the real domain:
+
+1. **Verify the sending domain in Resend** and publish the SPF/DKIM records it gives you. Until that is
+   done, mail either fails outright or lands in spam.
+2. **`WBOS_SMTP_FROM` must match a verified domain.** A `From` on an unverified domain is rejected.
+
+The API key is a credential: inject it from the production secret store into the container environment.
+It must never be committed — `.env` is gitignored, and nothing in the repository contains a real value.
+
+**Verify before go-live** — this connects, authenticates, and optionally sends a real message:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T app node scripts/smtp-check.mjs you@example.com
+```
+
+Exit codes: `0` OK · `1` misconfigured or delivery failed · `2` SMTP intentionally disabled.
+
+### The flow
+
+1. `/sign-in` → **Forgot password?** → `/forgot-password`.
+2. The user submits an email. The response is identical whether or not the address is registered — WBOS
+   never discloses which emails have accounts.
+3. Better Auth mints a single-use token and emails a link to
+   `https://<domain>/api/auth/reset-password/<token>?callbackURL=/reset-password`.
+4. Following it validates the token and redirects to `/reset-password?token=…`, or to
+   `?error=INVALID_TOKEN` if it has expired or been used.
+5. Setting a new password revokes **every existing session** for that user
+   (`revokeSessionsOnPasswordReset`), so a stolen session cannot outlive the recovery.
+
+Tokens are single-use and expire after `WBOS_RESET_TOKEN_TTL_SECONDS` (default 1 hour). The email states
+the same lifetime it enforces. Rate limits already cover these endpoints: 5/60s per IP on
+`request-password-reset`, 10/60s per IP on `reset-password`.
+
+Mobile is unaffected: Bearer requests send no cookie, so the origin check skips them and password
+recovery changes nothing about the mobile authentication model.
+
 ## 7. First deploy from a dev machine
 
 `../scripts/deploy.sh` runs the full gate and a pre-deploy backup:

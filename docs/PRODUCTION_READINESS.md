@@ -138,8 +138,22 @@ launch (60/min). Sign-in happens once or twice a day per device (10/min per IP, 
 
 - [x] Better Auth sign-in / sign-up / onboarding
 - [x] Mobile API authenticated via session (v1 endpoints)
-- [ ] Password reset flow verified
-- [ ] Email/identity provider configured for production (SMTP for verification/reset emails) or a documented decision to run self-managed
+- [x] Password reset flow implemented and verified — `/forgot-password` → emailed single-use link →
+      `/reset-password` → sign in with the new password. Tokens expire
+      (`WBOS_RESET_TOKEN_TTL_SECONDS`, default 1h), are single-use, and a reset revokes every existing
+      session. Verified through the real Caddy/TLS stack against a live SMTP server with
+      `BETTER_AUTH_DISABLE_CSRF=0`; mobile Bearer auth confirmed unaffected.
+      See `PRODUCTION_DEPLOYMENT.md` §6b.
+- [x] Email delivery is optional and degrades safely — with `WBOS_SMTP_HOST` unset the app runs normally
+      and `/forgot-password` says recovery is unavailable instead of pretending to send. A
+      *partially* configured mailer fails startup with the missing variables named.
+- [ ] **SMTP provider credentials provisioned** (operator) — provider chosen: **Resend**
+      (`smtp.resend.com`, user `resend`, password = API key, injected from the production secret store).
+      The integration is provider-agnostic plain SMTP, so this is configuration only. Verify with
+      `node scripts/smtp-check.mjs you@example.com` before go-live. Until this is done a forgotten
+      password is an unrecoverable lockout.
+- [ ] **Sending domain verified in Resend + SPF/DKIM published** (operator, needs the real domain) —
+      `WBOS_SMTP_FROM` must be on that verified domain or mail is rejected or spam-filed
 - [ ] Session expiry and revocation behavior verified
 - [ ] Multi-device behavior verified (sign-in on web + mobile concurrently)
 - [x] **Day-0 first-owner bootstrap is deterministic** — `WBOS_BOOTSTRAP_OWNER_EMAIL` names the owner;

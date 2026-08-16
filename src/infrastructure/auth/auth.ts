@@ -3,6 +3,10 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { bearer } from "better-auth/plugins/bearer";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import {
+  resetTokenTtlSeconds,
+  sendPasswordResetEmail,
+} from "@/infrastructure/email/send-password-reset";
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET!,
@@ -12,6 +16,12 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    resetPasswordTokenExpiresIn: resetTokenTtlSeconds(),
+    // A password reset is a credential change: drop every existing session so a
+    // stolen session cannot outlive the recovery it triggered.
+    revokeSessionsOnPasswordReset: true,
+    // See send-password-reset.ts — degrades quietly and safely when SMTP is off.
+    sendResetPassword: sendPasswordResetEmail,
   },
   plugins: [bearer()],
   trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS

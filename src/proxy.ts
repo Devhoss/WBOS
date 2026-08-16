@@ -3,11 +3,18 @@ import type { NextRequest } from "next/server";
 
 import { verifyDownloadToken } from "@/lib/download/signed-token";
 
+// Routes reachable without a session. Password recovery MUST be here: the
+// whole point is that the user cannot sign in, so redirecting them to /sign-in
+// would make the flow impossible to complete.
 const publicRoutes = new Set([
   "/sign-in",
   "/sign-up",
   "/sign-in/",
   "/sign-up/",
+  "/forgot-password",
+  "/forgot-password/",
+  "/reset-password",
+  "/reset-password/",
 ]);
 
 const publicPrefixes = [
