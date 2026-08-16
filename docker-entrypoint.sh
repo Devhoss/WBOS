@@ -64,6 +64,39 @@ echo "  ✓ Storage validation passed."
 echo "=========================================="
 echo ""
 
+# Wait for the database before validating or migrating.
+#
+# In production the database is the `db` service on the same VPS and compose
+# already gates startup on its healthcheck, but "not reachable yet" is still a
+# normal transient state — after a VPS reboot, or when DATABASE_URL points at a
+# database somewhere else. Without this the container would crash-loop through
+# startup validation while PostgreSQL finishes coming up.
+#
+# This is a bounded wait: if the database is genuinely gone we still exit
+# non-zero, and the restart policy keeps retrying with backoff.
+DB_WAIT_SECONDS="${WBOS_DB_WAIT_SECONDS:-90}"
+if [ -n "${DATABASE_URL:-}" ] && [ "$DB_WAIT_SECONDS" -gt 0 ] 2>/dev/null; then
+  echo "[entrypoint] Waiting up to ${DB_WAIT_SECONDS}s for the database..."
+  DB_WAITED=0
+  # Strip Prisma-only query params (?schema=...) that pg_isready does not accept.
+  DB_CONN="${DATABASE_URL%%\?*}"
+  while ! pg_isready -d "$DB_CONN" >/dev/null 2>&1; do
+    if [ "$DB_WAITED" -ge "$DB_WAIT_SECONDS" ]; then
+      echo ""
+      echo "  ✗ Database not reachable after ${DB_WAIT_SECONDS}s."
+      echo "    Check DATABASE_URL, that the db service is running and healthy"
+      echo "    (docker compose ps), and that the host in DATABASE_URL matches"
+      echo "    the compose service name (db) rather than localhost."
+      echo "    See docs/PRODUCTION_DEPLOYMENT.md §5."
+      echo ""
+      exit 1
+    fi
+    sleep 3
+    DB_WAITED=$((DB_WAITED + 3))
+  done
+  echo "  ✓ Database reachable after ${DB_WAITED}s"
+fi
+
 # Validate environment + backup tools (fails fast on missing pieces)
 echo "[entrypoint] Running startup validation..."
 if ! node /app/scripts/startup-validate.js; then

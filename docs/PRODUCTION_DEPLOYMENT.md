@@ -33,23 +33,36 @@ container paths `/app/storage` and `/app/backups` are where the app actually wri
 Copy from `../.env.example` and fill in real values:
 
 ```dotenv
-# Must point at the db service of this stack (host: db, not localhost)
+# PostgreSQL 17 runs as the `db` service on this VPS (see §5). `db` is the compose
+# service name; the database publishes no port to the host.
 DATABASE_URL="postgresql://wbos:CHANGE-ME@db:5432/wbos?schema=public"
-BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
-BETTER_AUTH_URL="https://appwbos.com"
 
-# Postgres service in docker-compose.prod.yml must match the DATABASE_URL credentials
+# Must match DATABASE_URL above
 POSTGRES_USER="wbos"
-POSTGRES_PASSWORD="CHANGE-ME"          # same password as in DATABASE_URL
+POSTGRES_PASSWORD="CHANGE-ME"
 POSTGRES_DB="wbos"
 
-# Optional: off-host sync (see §7)
+BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+
+# MUST be https:// — Better Auth only marks the session cookie Secure when it is
+BETTER_AUTH_URL="https://wbos.example.com"
+BETTER_AUTH_TRUSTED_ORIGINS="https://wbos.example.com"
+BETTER_AUTH_DISABLE_CSRF="0"          # enable origin validation (see §6, CSRF_DECISION.md)
+
+# Reverse proxy / TLS — the Caddyfile never hardcodes a hostname
+WBOS_DOMAIN="wbos.example.com"
+WBOS_TLS="ops@example.com"            # ACME email, or "internal" for a local CA
+
+# Exactly one trusted proxy hop (caddy). Increment if you add another in front.
+WBOS_TRUSTED_PROXY_HOPS="1"
+
+# Optional: off-host sync (see §8)
 WBOS_BACKUP_SYNC_TARGET="rsync://backup@nas.local:/volume1/wbos-backups"
 ```
 
 `scripts/startup-validate.js` runs at container start and fails fast if `DATABASE_URL`, `BETTER_AUTH_SECRET`, or
-`BETTER_AUTH_URL` is missing, if `pg_dump`/`pg_restore`/`tar` are absent, or if disk is below 10% free. It also warns
-on a PostgreSQL client/server major version mismatch (§11).
+`BETTER_AUTH_URL` is missing, if `pg_dump`/`pg_restore`/`tar` are absent, or if disk is below 10% free. It also
+reports the CSRF posture, the trusted-proxy hop count, and any PostgreSQL client/server version mismatch.
 
 ## 4. Start the stack
 
@@ -60,33 +73,187 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The app waits for `db` to be healthy, runs `prisma migrate deploy` (via `docker-entrypoint.sh`), then serves on
-host port `3005`. Healthcheck: `curl http://localhost:3005/api/health`.
+Three services start: **caddy** (public, ports 80/443), **app** (loopback only, `127.0.0.1:3005`) and
+**db** (no published port). The app waits for the database to be healthy (up to `WBOS_DB_WAIT_SECONDS`,
+default 90s), runs
+`prisma migrate deploy`, then serves. A failed migration aborts startup rather than running against a
+half-migrated database.
 
-A failed migration aborts container startup rather than running against a half-migrated database.
+Verify:
 
-## 5. Reverse proxy + TLS (recommended)
-
-Terminate TLS in front of port 3005 (Caddy or nginx). Set `X-Forwarded-Proto: https` and keep
-`BETTER_AUTH_URL=https://appwbos.com` — Better Auth validates origins against it and the cookie is Secure.
-
-Example Caddy:
-
-```caddy
-appwbos.com {
-    reverse_proxy 127.0.0.1:3005
-}
+```bash
+curl -sI http://wbos.example.com/            # expect 308 -> https
+curl -s  https://wbos.example.com/sign-in -o /dev/null -w '%{http_code}\n'   # 200
+curl -s  http://127.0.0.1:3005/api/health | head -c 200                      # operator-only
 ```
 
-Validate `https://appwbos.com/api/health` returns `200` and the `/health` page shows all blocks green.
+`/api/health` is deliberately **not** reachable through the proxy — it returns 404 there. It exposes
+storage paths, disk figures and backup state, which is operator information. Host cron
+(`scripts/health-alert.sh`) reads it on `127.0.0.1:3005`, which is why the app keeps a loopback port.
 
-Set `WBOS_TRUSTED_PROXY_HOPS` to the number of trusted proxies in front of the app (default 1). Per-IP rate limiting
-reads the client address that many hops from the **right** of `X-Forwarded-For`, because anything to the left is
-attacker-supplied.
+## 5. Database: PostgreSQL 17 on the VPS
 
-## 6. First deploy from a dev machine
+PostgreSQL runs as the `db` service in `docker-compose.prod.yml`, on the **same VPS** as the app and
+proxy. The production stack has no dependency on the homelab or on any other machine.
 
-`scripts/deploy.sh` runs the full gate and a pre-deploy backup:
+```
+                          ── VPS (self-contained) ──
+internet ──443/80──> caddy ──http──> app ──5432──> db (postgres:17)
+                     (TLS)           (loopback     (no published port —
+                     PUBLIC           only)          container network only)
+
+                          off-host: backups replicated to separate storage (§8)
+```
+
+### 5.1 Why the database is not publicly exposed
+
+The `db` service deliberately declares **no `ports:` mapping at all**. Docker only publishes what you
+ask it to, so with no mapping there is no host listener and nothing for the internet — or the VPS's own
+network neighbours — to reach. The app connects over the `wbos-prod` container network as `db:5432`.
+
+This is stronger than binding to `127.0.0.1:5432`: even a local process on the VPS cannot reach the
+database without going through Docker.
+
+```dotenv
+DATABASE_URL="postgresql://wbos:CHANGE-ME@db:5432/wbos?schema=public"
+```
+
+`db` is the compose **service name**, resolved by Docker's internal DNS. The credentials must match
+`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` in the same `.env`.
+
+Connections still require a password (`scram-sha-256`), so a compromised sibling container cannot
+connect anonymously.
+
+Operator access, when you need a shell:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db psql -U wbos wbos
+```
+
+Verify nothing is listening, from the VPS and then from outside it:
+
+```bash
+ss -tlnp | grep 5432                 # expect no output on the host
+nc -vz -w 5 <vps-public-ip> 5432     # must time out or be refused
+```
+
+VPS firewall — allow only what is public:
+
+```bash
+sudo ufw allow 22/tcp     # SSH (consider restricting to your own IP)
+sudo ufw allow 80/tcp     # HTTP -> HTTPS redirect + ACME
+sudo ufw allow 443/tcp    # HTTPS
+sudo ufw allow 443/udp    # HTTP/3
+sudo ufw enable
+```
+
+Note that Docker's published ports bypass `ufw` by writing directly to iptables — which is precisely why
+the database publishes nothing and the app publishes on `127.0.0.1` only. The firewall is a second layer,
+not the primary control.
+
+### 5.2 Keeping `DATABASE_URL` configurable
+
+Nothing in the app assumes a local database; it reads `DATABASE_URL` like any other setting. Only
+`depends_on` in the compose file ties the app to the `db` service. To move to a managed PostgreSQL later,
+point `DATABASE_URL` elsewhere and drop the `db` service and its `depends_on` block — no code changes.
+
+The startup wait (`WBOS_DB_WAIT_SECONDS`, default 90s) works either way: it covers a slow database start
+after a VPS reboot as readily as a remote endpoint coming back.
+
+### 5.3 If the database is unavailable while the app is up
+
+| When | Behavior |
+| ---- | -------- |
+| At container start | The entrypoint waits up to `WBOS_DB_WAIT_SECONDS` for `pg_isready`, then exits non-zero. `restart: unless-stopped` retries, so the app self-heals once the database is accepting connections — no manual deploy needed. `depends_on: condition: service_healthy` already handles the normal boot ordering. |
+| While running | Requests that touch the database fail. `/api/health` reports `database.ok: false` and returns 503; the container is marked unhealthy but is **not** killed, so it recovers by itself. |
+| Alerting | `scripts/health-alert.sh` (host cron) raises **"Database is DOWN"** and sends a recovery notice when it clears. It runs on the host and polls the loopback port, so it still fires when the app is unhealthy. |
+| Caddy | Keeps serving TLS and returns 502 for app requests. Certificates renew independently of the database. |
+
+There is no local write buffer — WBOS is not usable while its database is down. Co-locating the database
+removes the network as a failure mode: the realistic remaining causes are the VPS itself being down (which
+takes everything anyway) or a full disk, which `/api/health` already alerts on.
+
+### 5.4 Backups: on-host job, off-host copy
+
+Because everything runs on one VPS, **off-host backup replication is what makes the deployment
+recoverable**. A VPS loss otherwise takes the app, the database, the uploads and the backups together.
+
+- Backup jobs run **on the VPS**. A package contains the database dump *and* `WBOS_STORAGE_ROOT/uploads`,
+  and both live here.
+- The app image ships `postgresql-client-17`, so in-app **Create Backup Now** works with no host setup.
+  For host cron (`backup-package.sh`), either install `postgresql-client-17` on the VPS or run the script
+  inside the container:
+
+  ```bash
+  docker compose -f docker-compose.prod.yml exec -T app ./scripts/backup-package.sh
+  ```
+
+- `scripts/sync-backups.sh` then copies packages to **separate storage** — object storage (S3/B2 via
+  rclone) or a NAS. This is not optional in a single-VPS design; it is the whole disaster-recovery story.
+  Configure `WBOS_BACKUP_SYNC_TARGET` and wire the cron line in §8.
+- `scripts/restore-test.sh` creates and drops a scratch database on the same server, so the configured
+  user needs `CREATEDB` (the compose `POSTGRES_USER` is a superuser and satisfies this). It never touches
+  the production database.
+- Off-site storage credentials should be **write/append-oriented** where the provider supports it, so a
+  compromised VPS cannot delete the backup history. Note that `sync-backups.sh` mirrors with `--delete`,
+  so local retention is the source of truth — consider provider-side versioning or object lock.
+
+### 5.5 What is publicly exposed
+
+| Port | Exposure | Purpose |
+| ---- | -------- | ------- |
+| 443 | **Public** | HTTPS — the only public entry point |
+| 80 | **Public** | HTTP → HTTPS redirect + ACME challenge |
+| 22 | Public (restrict by IP if possible) | SSH administration |
+| 3005 | `127.0.0.1` only | Operator/health-cron access to the app |
+| 5432 | **Not published** | PostgreSQL — container network only |
+
+### 5.6 The homelab is development only
+
+The homelab PostgreSQL stays exactly as it is and is **not** a production dependency. Point a development
+`.env` at it; production never reaches outside the VPS.
+
+One observation, not a production blocker: that instance currently publishes `0.0.0.0:5432`, so it accepts
+connections on every interface of the homelab host. That is fine on a trusted LAN behind a router that
+forwards nothing, but it would be exposed if the host ever gets a public address or the router forwards
+5432. Worth a look when convenient — it does not affect the production VPS.
+
+## 6. TLS, origins and cookies
+
+Caddy terminates TLS and obtains certificates automatically; there is no certbot cron. The hostname is
+configuration (`WBOS_DOMAIN`), never hardcoded in the `Caddyfile`.
+
+Prerequisites for a publicly trusted certificate:
+
+- DNS `A`/`AAAA` for `WBOS_DOMAIN` → the app host's public IP.
+- Ports 80 and 443 reachable from the internet (ACME uses 80).
+- `WBOS_TLS` set to a real email address. Leave it as `internal` and Caddy issues a **self-signed**
+  certificate from its own CA — fine for LAN or rehearsal, browser warnings in production.
+
+Certificates and the ACME account key live in the `caddy_data` volume. **Do not delete it** — re-issuing
+repeatedly can hit Let's Encrypt rate limits.
+
+Three settings must agree, or authentication breaks in confusing ways:
+
+| Setting | Value | Why |
+| ------- | ----- | --- |
+| `WBOS_DOMAIN` | `wbos.example.com` | What Caddy serves and requests a certificate for |
+| `BETTER_AUTH_URL` | `https://wbos.example.com` | Better Auth marks the session cookie **Secure** only when this is `https`, and validates origins against it |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | `https://wbos.example.com` | Consulted once CSRF/origin validation is enabled |
+
+With `BETTER_AUTH_DISABLE_CSRF="0"` the origin check is active — see `CSRF_DECISION.md`. If
+`BETTER_AUTH_TRUSTED_ORIGINS` is then empty or wrong, sign-in returns **403 `INVALID_ORIGIN`** and the
+server log names the origin it rejected. Startup validation fails fast on that combination rather than
+letting you discover it at the sign-in screen.
+
+Client-IP handling: Caddy **appends** the real client address to any `X-Forwarded-For` the caller sent, so
+the rightmost entry is the trustworthy one. That is one hop, hence `WBOS_TRUSTED_PROXY_HOPS=1`. Adding
+Cloudflare or a load balancer in front means **two** hops — increment it, or per-IP rate limiting keys on
+the wrong address.
+
+## 7. First deploy from a dev machine
+
+`../scripts/deploy.sh` runs the full gate and a pre-deploy backup:
 
 ```bash
 cd /srv/wbos
@@ -95,10 +262,10 @@ WBOS_STORAGE_ROOT=/srv/wbos/storage WBOS_BACKUP_SYNC_TARGET=... \
   ./scripts/deploy.sh
 ```
 
-Steps: unit tests → typecheck → lint → pre-deploy backup (`backup-package.sh`) → image pull → compose up →
+Steps: unit tests → typecheck → lint → pre-deploy backup (`backup-package.sh`) → `npm run build` → compose up →
 health poll → optional off-host sync. Use `--skip-tests` once trusted.
 
-## 7. Backups
+## 8. Backups
 
 ### In-app
 
@@ -115,55 +282,95 @@ health poll → optional off-host sync. Use `--skip-tests` once trusted.
 30 2 * * * WBOS_BACKUP_DIR=/srv/wbos/backups WBOS_BACKUP_SYNC_TARGET='rsync://backup@nas.local:/volume1/wbos-backups' /srv/wbos/scripts/sync-backups.sh
 ```
 
-Host must have `pg_dump` (matching the server major — see §11) + `tar`.
+The VPS needs `postgresql-client-17` + `tar` for host cron (see PRODUCTION_READINESS "Backup
+dependencies"). The `db` service publishes no port, so a host-run `pg_dump` cannot reach it — either
+run the script inside the app container, which already has the right client and network access:
 
-### Off-host
+```cron
+0 2 * * * cd /srv/wbos && docker compose -f docker-compose.prod.yml exec -T app ./scripts/backup-package.sh
+```
 
-`sync-backups.sh` mirrors `packages/` to a NAS (`rsync://`), object storage (`s3://` via rclone), or a second mount
-(`file://`). This closes the Critical "same-host backups" audit item.
+…or add a temporary `127.0.0.1:5432:5432` mapping to the `db` service if you prefer host-side dumps.
+Running it in the container is the recommended option: fewer moving parts, no host listener, and a
+guaranteed client/server version match.
 
-The sync is a **mirror** (`--delete`), so local retention is the source of truth.
+### Off-host — mandatory on a single VPS
+
+`sync-backups.sh` mirrors `packages/` to object storage (`s3://` via rclone), a NAS (`rsync://`), or a
+second mount (`file://`).
+
+With everything on one VPS, this is **the entire disaster-recovery story**: without it, losing the VPS
+loses the app, the database, the uploads and the backups in one stroke. Treat the off-host copy as a
+launch blocker, not a nice-to-have.
+
+Two cautions:
+
+- The sync is a **mirror** (`--delete`), so anything deleted locally is deleted remotely. Local retention
+  is the source of truth.
+- Because the VPS holds credentials that can delete the remote copy, prefer a target with versioning or
+  object-lock (S3/B2) so a compromised or misbehaving host cannot erase the backup history.
 
 ### Verify
 
 - `/health` page: Backups block (freshness < 48h), Backup Tools ✓, Last Restore Test, Disk blocks for storage +
   backups (>= 10% free).
-- A restore test that **fails** is recorded and displayed as FAILED — the indicator no longer falls back to the last
-  successful run.
 - Perform a real restore at least once before go-live and record it in PRODUCTION_READINESS **Restore Verification**.
 
-## 8. Updates / rollback
+## 9. Updates / rollback
 
 ```bash
 cd /srv/wbos
 WBOS_DATABASE_URL="$DATABASE_URL" WBOS_BACKUP_DIR=/srv/wbos/backups \
 WBOS_STORAGE_ROOT=/srv/wbos/storage ./scripts/deploy.sh    # backups first
+docker compose -f docker-compose.prod.yml pull              # new image
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-`deploy.sh` pulls the image explicitly. `up --build` is a no-op for this stack — the app service has `image:` and no
-`build:` — so an explicit `pull` is what actually picks up a new CI build.
+Rollback: set `WBOS_IMAGE_TAG=<previous-sha>` and re-run `up -d`, then, if the migration failed, restore
+the pre-deploy backup (Settings → Backup & Restore → Restore, type `RESTORE`). A failed migration aborts
+container startup rather than running against a half-migrated database, so the pre-deploy backup is a
+valid restore point.
 
-Rollback: set `WBOS_IMAGE_TAG=<previous-sha>` and re-run `up -d`, then, if the migration failed, restore the
-pre-deploy backup (Settings → Backup & Restore → Restore, type `RESTORE`).
+## 10. Day-0 checklist (fresh VPS from scratch)
 
-## 9. Day-0 checklist (fresh install from scratch)
+**Infrastructure**
+- [ ] VPS provisioned; Docker Engine ≥ 24 + Compose v2, `curl`, `rsync` installed
+- [ ] `ufw` allows 22/80/443 only; verify `nc -vz <vps-ip> 5432` times out (§5.1)
+- [ ] `docker network create wbos-prod` (once)
 
-- [ ] Prerequisites installed (Docker, curl, rsync)
-- [ ] `docker network create wbos-prod` once
-- [ ] `.env` created with real secrets; `DATABASE_URL` points at `db:5432`
-- [ ] DNS `appwbos.com` → host; TLS proxy in front of 3005
-- [ ] `docker compose -f docker-compose.prod.yml pull && up -d`; containers healthy
-- [ ] `https://appwbos.com/api/health` returns healthy; `/health` page all green
-- [ ] Backup cron lines installed (`crontab -l`) and off-host sync verified (files land on NAS)
-- [ ] A restore test executed and recorded in PRODUCTION_READINESS
+**Configuration**
+- [ ] `.env` created with real secrets (`BETTER_AUTH_SECRET` from `openssl rand -hex 32`)
+- [ ] `DATABASE_URL` points at `db:5432`; `POSTGRES_*` match it
+- [ ] `WBOS_DOMAIN` set; DNS A/AAAA → VPS public IP; ports 80/443 reachable
+- [ ] `WBOS_TLS` set to a real email (not `internal`) for a publicly trusted certificate
+- [ ] `BETTER_AUTH_URL` and `BETTER_AUTH_TRUSTED_ORIGINS` both set to `https://<domain>`
+- [ ] `BETTER_AUTH_DISABLE_CSRF="0"` (see §6 and `CSRF_DECISION.md`)
+- [ ] `WBOS_TRUSTED_PROXY_HOPS=1` (increment only if another proxy sits in front of Caddy)
+
+**Bring-up**
+- [ ] `docker compose -f docker-compose.prod.yml pull && up -d`; all three services healthy
+- [ ] `curl -sI http://<domain>/` returns 308 to https
+- [ ] `https://<domain>/sign-in` loads with a valid certificate
+- [ ] `curl http://127.0.0.1:3005/api/health` healthy; `/health` page all green when signed in
+- [ ] `https://<domain>/api/health` returns 404 (not published through the proxy)
+- [ ] Container logs show no `Invalid origin:` errors after a sign-in
+
+**Data safety — do not skip on a single-VPS deployment**
+- [ ] Backup cron installed (`crontab -l`) and a package appears under `backups/packages`
+- [ ] Off-host sync configured and verified: a package is readable **from the remote storage**
+- [ ] A restore test executed against a real package and recorded in PRODUCTION_READINESS
+- [ ] Alerting channel configured; `./scripts/health-alert.sh --test` delivers a message
+
+**Go-live**
 - [ ] First user (OWNER) created, signed in over HTTPS
+- [ ] Mobile app pointed at `https://<domain>` and signed in successfully
 
-## 10. Release gate
+## 11. Release gate
 
 Run before every deploy — see **Release gate** in PRODUCTION_READINESS.md. `scripts/deploy.sh` automates tests +
 typecheck + lint + pre-deploy backup + image pull + up + health.
 
-## 11. PostgreSQL major version
+## 12. PostgreSQL major version
 
 The project standardizes on **PostgreSQL 17** everywhere:
 
@@ -174,24 +381,34 @@ The project standardizes on **PostgreSQL 17** everywhere:
 | Client tools in the app image | `Dockerfile` → `postgresql-client-17` from the PostgreSQL APT repo, pinned by `ARG EXPECTED_PG_MAJOR` |
 | Restore rehearsals | `scripts/restore-test.sh`, run inside the app container |
 
-**Why it must be one version:** `pg_dump` **refuses** to dump from a server newer than itself, and `pg_restore` cannot
-reliably load a dump into a server older than the `pg_dump` that produced it. Either way a client/server split breaks
+**Why it must be one version:** `pg_dump` **refuses** to dump from a server newer
+than itself, and `pg_restore` cannot reliably load a dump into a server older
+than the `pg_dump` that produced it. Either way a client/server split breaks
 backups — and it breaks them where you are least likely to look until a disaster.
 
-**This was a live defect, not a hypothetical.** The image previously installed Debian's `postgresql-client`
-meta-package, which tracks the *base image's* release: `node:24-slim` is bookworm, so the image shipped client **15**
-while the database was 16/17. Every backup attempt in production would have failed with a server-version mismatch.
-The Dockerfile now installs `postgresql-client-17` explicitly and **fails the build** if the installed major is not 17
-— which is exactly how the defect surfaced.
+**This was a live defect, not a hypothetical.** The image previously installed
+Debian's `postgresql-client` meta-package, which tracks the *base image's*
+release: `node:24-slim` is bookworm, so the image shipped client **15** while the
+database was 16/17. Every backup attempt in production would have failed with a
+server-version mismatch. The Dockerfile now installs `postgresql-client-17`
+explicitly from the PostgreSQL APT repository and **fails the build** if the
+installed major is not 17 — which is exactly how the defect surfaced.
 
-`scripts/startup-validate.js` additionally compares `pg_dump`'s major against `SHOW server_version` on every boot and
-warns on a mismatch. It warns rather than fails: the mismatch threatens restore, not runtime, and refusing to boot
+`scripts/startup-validate.js` additionally compares `pg_dump`'s major against
+`SHOW server_version` on every boot and warns on a mismatch. It warns rather
+than fails: the mismatch threatens restore, not runtime, and refusing to boot
+would turn a latent DR risk into an immediate outage.
+
+`scripts/startup-validate.js` compares `pg_dump`'s major version against
+`SHOW server_version` on every boot and warns on a mismatch. It warns rather
+than fails: the mismatch threatens restore, not runtime, and refusing to boot
 would turn a latent DR risk into an immediate outage.
 
 ### ⚠ Changing the major version on an existing deployment
 
-PostgreSQL **refuses to start** on a data directory written by a different major version. Swapping the image alone
-will not work — the container will crash-loop. To move an existing database between majors:
+PostgreSQL **refuses to start** on a data directory written by a different major
+version. Swapping the image alone will not work — the container will crash-loop.
+To move an existing database between majors:
 
 ```bash
 # 1. Take a backup and confirm it restores BEFORE touching anything
@@ -216,5 +433,6 @@ cat /srv/wbos/pre-upgrade.sql | \
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Keep the old volume until the new stack is verified and a fresh backup has passed a restore test. **If WBOS has not
-gone live yet, none of this applies** — the current pin is already 17, so a fresh install just starts on 17.
+Keep the old volume until the new stack is verified and a fresh backup has passed
+a restore test. **If WBOS has not gone live yet, none of this applies** — the
+current pin is already 17, so a fresh install just starts on 17.

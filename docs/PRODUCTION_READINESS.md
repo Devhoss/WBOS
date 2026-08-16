@@ -11,10 +11,26 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` nee
 - [x] Single `docker-compose.yml` app service with pinned image (`ghcr.io/devhoss/wbos:latest`)
 - [x] App runs as non-root user (uid/gid 1001) inside the container
 - [x] Docker healthcheck on `/api/health`
-- [ ] Database is a managed/replicated PostgreSQL (currently single instance; evaluate backup strategy against RTO)
+- [x] Database location decided — PostgreSQL 17 runs as the `db` service on the **same dedicated VPS** as
+      the app and proxy. It publishes **no port**, so it is reachable only over the `wbos-prod` container
+      network; the homelab is development-only and is not a production dependency. Architecture, firewall
+      rules, failure behavior and backup implications: `PRODUCTION_DEPLOYMENT.md` §5.
+- [ ] Database is replicated / has a standby (single instance; a VPS loss means downtime until restore —
+      accepted residual risk, and precisely why off-host backup replication is mandatory in this design)
 - [x] Resource limits (memory/CPU) set for the app container (`docker-compose.prod.yml` deploy.resources)
-- [ ] Reverse proxy with TLS termination in front of the app
-- [ ] `X-Forwarded-Proto`/origin handling validated behind the proxy (Better Auth trusted origins)
+- [x] Reverse proxy with TLS termination in front of the app — `caddy` service in
+      `docker-compose.prod.yml` + `Caddyfile`. Automatic certificate issuance/renewal, HTTP→HTTPS
+      redirect, HSTS. Hostname is configuration (`WBOS_DOMAIN`), never hardcoded; `WBOS_TLS` selects
+      ACME or Caddy's local CA.
+- [x] App is not reachable around the proxy — the app publishes `127.0.0.1:3005` only (loopback, kept so
+      host-cron alerting can still poll `/api/health`), and PostgreSQL publishes nothing at all.
+      Caddy is the sole public listener.
+- [x] `/api/health` is not published through the proxy (404) — it exposes storage paths, disk figures and
+      backup state. The authenticated `/health` page remains available remotely via `AppShell`.
+      External uptime checks should target `/sign-in`, not the health JSON.
+- [x] `X-Forwarded-Proto`/origin handling validated behind the proxy (Better Auth trusted origins) —
+      Caddy sets `X-Forwarded-Proto`; `BETTER_AUTH_URL` + `BETTER_AUTH_TRUSTED_ORIGINS` are the HTTPS
+      origin; `WBOS_TRUSTED_PROXY_HOPS=1` matches the single Caddy hop
 - [x] App restarts on crash (`restart: unless-stopped`) and behaves correctly across restarts (`docker-compose.prod.yml`)
 - [x] Disk space monitoring on the host (DB + storage + backups volumes — `statfsSync` checks in `/api/health`, <10% = unhealthy)
 
@@ -22,7 +38,12 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` nee
 
 - [x] `BETTER_AUTH_SECRET` is required and read from environment (not committed)
 - [x] All secrets (`DATABASE_URL`, `BETTER_AUTH_SECRET`, FCM keys) provisioned via `.env` / secret manager, never in git — `.env` is gitignored; `.env.example` documents every variable; FCM keys via env or gitignored `.secrets/`
-- [ ] HTTPS enforced for all browser traffic
+- [x] HTTPS enforced for all browser traffic — Caddy terminates TLS, `:80` permanently redirects to
+      HTTPS (including requests by IP or unknown Host), HSTS `max-age=31536000; includeSubDomains` is
+      set, and the app itself has no public listener to bypass it. Also sets `X-Content-Type-Options`,
+      `X-Frame-Options: DENY`, and `Referrer-Policy`.
+- [x] Session cookie is `Secure` in production — Better Auth derives this from `BETTER_AUTH_URL`, which
+      must be the `https://` origin. Verified through the real proxy: `HttpOnly`, `Secure`, `SameSite=Lax`.
 - [ ] Password policy / account lockout reviewed — account lockout now provided by rate limiting (5 failed sign-ins per 15 min per account, auto-recovers); password strength policy itself not yet set
 - [x] Admin/session cookie flags reviewed (HttpOnly, SameSite, Secure) — Better Auth defaults: HttpOnly + SameSite=Lax, Secure set when `BETTER_AUTH_URL` is HTTPS
 - [x] Rate limiting on sign-in and mobile API endpoints — lightweight in-memory sliding-window limiter (no Redis): per-IP on auth endpoints, per-account on mobile API + per-email sign-in backoff; 429 + Retry-After; validated 2026-08-10 (see Rate limiting section)
@@ -134,6 +155,17 @@ launch (60/min). Sign-in happens once or twice a day per device (10/min per IP, 
       (Previously the record was only written on the success path, so failures were invisible.)
 - [x] Backup retention policy documented (currently: 7 daily / 4 weekly / 12 monthly / yearly forever)
 - [ ] Encrypted backup at rest if off-site
+
+### Deferred optimizations (recorded, deliberately not done)
+
+- **Docker image size — `COPY --chown` instead of recursive chown.** `chown -R appuser:appgroup /app` in
+  the Dockerfile rewrites every file under `/app`, duplicating the entire application tree (node_modules
+  and the Playwright Chromium build included) into a single **1.54 GB** layer and roughly doubling the
+  image. Real image size is 1.38 GB (`docker image inspect`; the ~5.6 GB reported by `docker images` is
+  inflated by BuildKit attestation manifests). The fix is to pass `--chown=appuser:appgroup` on the
+  earlier `COPY` instructions and drop the recursive chown. Build-only change, no runtime behavior
+  difference. Deferred deliberately — worth doing when deploy-pull time or registry cost starts to
+  matter, not during a hardening pass.
 
 Roadmap (not blocking production):
 
@@ -444,6 +476,56 @@ and `PRODUCTION_READINESS.md` + `PRODUCTION_DEPLOYMENT.md` moved from the untrac
 `web/docs/` so they are version-controlled alongside the code they describe. `web` and `mobile` remain
 separate repositories; no umbrella repo was created.
 
+### 2026-08-16 — Phase 4: reverse proxy / TLS (verified end-to-end)
+
+Production topology settled: a **dedicated VPS** running Caddy + WBOS + PostgreSQL 17, independent of the
+homelab (which stays development-only). Caddy is the sole public listener; the app binds `127.0.0.1:3005`
+for host-cron health polling; the database publishes **no port at all**.
+
+Verified against a full stack (Caddy → app → postgres:17) over genuine TLS, using Caddy's local CA on
+`wbos.localhost`, with `BETTER_AUTH_DISABLE_CSRF=0`. **26 checks, 0 failures.**
+
+| Area | Result |
+| ---- | ------ |
+| HTTP → HTTPS | `308` permanent redirect to the `https://` origin |
+| TLS termination | Certificate served by Caddy (`CN=Caddy Local Authority`); HSTS `max-age=31536000; includeSubDomains` |
+| No bypass path | App `:3005` unreachable from off-host; database publishes no host port; `/api/health` returns **404** through the proxy but 200 on loopback |
+| Day-0 health | `healthy=true`, `neverBackedUp=true`, `stale=false` on a fresh deployment with no backups |
+| Fresh volumes | App runs as uid 1001 and `/app/backups` is writable on a brand-new named volume |
+| PostgreSQL version | `pg_dump 17.11` in the image matches server 17; boot-time check reports the match |
+| Session cookie | `__Secure-` prefixed, `HttpOnly`, `Secure`, `SameSite=Lax` |
+| CSRF / origin | Sign-up and sign-in succeed from the trusted origin; a cross-origin sign-in is **rejected with 403** |
+| Mobile Bearer | `set-auth-token` response header survives the proxy; `GET /api/v1/auth/me` and cookieless `get-session` both return 200 **with CSRF validation enabled** |
+| X-Forwarded-For | 14 sign-in attempts, each with a **different forged leftmost XFF** and a **unique email** (so the per-account limiter cannot fire), all shared one bucket → `429` at request #11 with "Too many attempts from this IP", exactly the documented 10/60s budget |
+
+The mobile Bearer result answers the open question in `CSRF_DECISION.md`: the flag is **not** required for
+the mobile app, so `BETTER_AUTH_DISABLE_CSRF="0"` is now the documented production setting.
+
+All of the above was re-run against the **shipped image** (entrypoint baked in, no bind mount, fresh
+volumes, fresh database) — not just against mounted sources.
+
+Two non-blocking findings from the same run, recorded rather than fixed:
+
+- **First-user/membership ordering.** `prisma/seed.mjs` attaches only the earliest-created user and skips
+  entirely once the bootstrap organization exists. A user without a membership gets `401` from every
+  org-scoped endpoint — indistinguishable from an auth failure. Documented as a go-live step with a
+  verification query in `PRODUCTION_DEPLOYMENT.md` §10.
+- **Image layer bloat (~1.5 GB).** `chown -R appuser:appgroup /app` in the Dockerfile rewrites every file
+  in `/app`, duplicating the whole application tree — node_modules and the Playwright browser included —
+  into a single 1.54 GB layer, roughly doubling the image. Real image size is 1.38 GB (`docker image
+  inspect`; the ~5.6 GB that `docker images` reports is inflated by BuildKit attestation manifests).
+  Pre-existing and unrelated to this phase; the fix is `COPY --chown` on the earlier COPY steps instead
+  of a recursive chown, which is a build-only change worth doing when deploy-pull time starts to matter.
+
+Two further defects were found *by* this phase and fixed:
+
+| Defect | How it surfaced | Impact if shipped |
+| ------ | --------------- | ----------------- |
+| The image installed Debian's `postgresql-client` meta-package, which follows the **base image** release. `node:24-slim` is bookworm → client **15**, not 17. | The `EXPECTED_PG_MAJOR` build assertion added in the previous pass failed the build. | `pg_dump` refuses to dump from a newer server, so **every backup would have failed** against the 17 database — including in-app "Create Backup Now". Now installs `postgresql-client-17` from the PostgreSQL APT repo, pinned. |
+| `prisma migrate deploy --skip-generate` — `migrate deploy` has never accepted that flag. | The new migration exit-code check refused to start the app. | Combined with the old `\|\| true`, **no container deployment had ever applied a migration** while printing "Migrations complete." A fresh production deploy would have come up against an empty schema. |
+
+Both were invisible before this work: the first because nothing compared client to server, the second
+because the failure was swallowed and reported as success.
 
 ---
 

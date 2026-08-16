@@ -1,40 +1,110 @@
-# Production deployment stack.
+# Production deployment stack: reverse proxy + app + database, all on one VPS.
 #
 # Usage:
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker network create wbos-prod        # once
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 #
 # Requires a `wbos-prod` external network and a `.env` with real secrets.
-# Postgres runs as a service in this stack (volume-backed), and backups are
-# synced off-host by scripts/sync-backups.sh on the host cron.
+#
+# ── Topology ────────────────────────────────────────────────────────────────
+#
+#   internet ──443/80──> caddy ──http──> app ──5432──> db (postgres:17)
+#                        (TLS)           (loopback     (NO published port —
+#                        PUBLIC           only)          container network only)
+#
+# Only caddy is publicly reachable. The app is bound to loopback so nothing can
+# reach it around the proxy, and PostgreSQL publishes no port at all: it is
+# reachable only from other containers on the wbos-prod network. There is no
+# dependency on any other machine — backups are copied off-host by
+# scripts/sync-backups.sh (see docs/PRODUCTION_DEPLOYMENT.md §8).
 
 services:
+  caddy:
+    # TLS termination, HTTP->HTTPS redirect, automatic certificate issuance and
+    # renewal. This is the ONLY service that publishes ports publicly.
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    container_name: wbos-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+
+    environment:
+      # Hostname and TLS mode are configuration, never hardcoded in the Caddyfile.
+      #   WBOS_TLS=ops@example.com  -> Let's Encrypt
+      #   WBOS_TLS=internal         -> Caddy local CA (offline / LAN / rehearsal)
+      WBOS_DOMAIN: ${WBOS_DOMAIN:?WBOS_DOMAIN is required (e.g. wbos.example.com)}
+      WBOS_TLS: ${WBOS_TLS:-internal}
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # caddy_data holds the ACME account key and issued certificates. Losing it
+      # forces re-issuance and can hit Let's Encrypt rate limits — keep it.
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - wbos-prod
+
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   db:
-    # PostgreSQL 17 is the standard across the whole project: CI e2e, the
-    # restore-test rehearsals, and the postgresql-client-17 installed in the app
-    # image. Keep them on the SAME major — pg_dump refuses to dump from a newer
-    # server and pg_restore cannot reliably load into an older one, so a split
-    # silently breaks disaster recovery.
+    # PostgreSQL 17 is the standard across the whole project: this service, CI
+    # e2e, the restore-test rehearsals, and the postgresql-client-17 installed in
+    # the app image. Keep them on the SAME major — pg_dump refuses to dump from a
+    # newer server and pg_restore cannot reliably load into an older one, so a
+    # split silently breaks disaster recovery.
     #
     # ⚠ Changing this major on an EXISTING deployment is a data-directory
     # migration, not an image swap: PostgreSQL refuses to start on a data dir
-    # written by a different major. See docs/PRODUCTION_DEPLOYMENT.md §11.
+    # written by a different major. See docs/PRODUCTION_DEPLOYMENT.md §12.
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     container_name: wbos-db
     restart: unless-stopped
+
+    # NO `ports:` — deliberately. Publishing 5432 (even on 127.0.0.1) is
+    # unnecessary: the app reaches the database over the wbos-prod container
+    # network as `db:5432`. Nothing outside Docker needs it, so nothing gets it.
+    # Use `docker compose exec db psql ...` for operator access.
+
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-wbos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-wbos}
+      # Enforce password auth for non-local connections instead of trusting the
+      # container network.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+
     volumes:
       - wbos_db_data:/var/lib/postgresql/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wbos} -d ${POSTGRES_DB:-wbos}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
     networks:
       - wbos-prod
+
     logging:
       driver: json-file
       options:
@@ -52,16 +122,35 @@ services:
         condition: service_healthy
 
     ports:
-      - "3005:3000"
+      # LOOPBACK ONLY. Browser traffic must arrive through caddy so that TLS,
+      # the HTTP->HTTPS redirect and X-Forwarded-For are applied. Publishing
+      # this on 0.0.0.0 would let anyone reach the app around the proxy —
+      # in plaintext, and able to forge X-Forwarded-For to defeat per-IP rate
+      # limiting (see src/infrastructure/rate-limit/ip.ts).
+      #
+      # The loopback binding is kept (rather than dropped entirely) because host
+      # cron needs it: scripts/health-alert.sh polls
+      # http://127.0.0.1:3005/api/health from the HOST, so it still reports when
+      # the container itself is unhealthy.
+      - "127.0.0.1:3005:3000"
 
     env_file:
       - .env
 
     environment:
-      # DATABASE_URL must point at the db service: postgresql://wbos:***@db:5432/wbos?schema=public
+      # DATABASE_URL is configuration, not hardcoded. In this stack it points at
+      # the db service over the container network:
+      #   postgresql://wbos:***@db:5432/wbos?schema=public
+      # Point it elsewhere (managed Postgres, another host) without touching this
+      # file — nothing here assumes the database is local except `depends_on`.
       INTERNAL_APP_URL: http://127.0.0.1:3000
       WBOS_STORAGE_ROOT: /app/storage
       WBOS_BACKUP_DIR: /app/backups
+      # Exactly one trusted proxy hop: caddy. See Caddyfile.
+      WBOS_TRUSTED_PROXY_HOPS: ${WBOS_TRUSTED_PROXY_HOPS:-1}
+      # Seconds to wait for the database at startup before exiting (the restart
+      # policy then retries). Covers a slow database start after a VPS reboot.
+      WBOS_DB_WAIT_SECONDS: ${WBOS_DB_WAIT_SECONDS:-90}
 
     volumes:
       - wbos_storage:/app/storage
@@ -96,6 +185,8 @@ volumes:
   wbos_db_data:
   wbos_storage:
   wbos_backups:
+  caddy_data:
+  caddy_config:
 
 networks:
   wbos-prod:

@@ -47,6 +47,38 @@ for (const key of RECOMMENDED_ENV_VARS) {
   }
 }
 
+// ── Auth posture ──
+// Surface the CSRF/origin-check state on every boot rather than leaving it
+// buried in source. See docs/CSRF_DECISION.md.
+const csrfDisabled = process.env.BETTER_AUTH_DISABLE_CSRF !== "0";
+const authUrlIsHttps = (process.env.BETTER_AUTH_URL || "").startsWith("https://");
+if (csrfDisabled) {
+  if (authUrlIsHttps) {
+    warn(
+      "CSRF/origin validation is DISABLED on /api/auth/* while serving over HTTPS " +
+        "(set BETTER_AUTH_DISABLE_CSRF=0 to enable — see docs/CSRF_DECISION.md)",
+    );
+  } else {
+    warn("CSRF/origin validation is disabled on /api/auth/* (see docs/CSRF_DECISION.md)");
+  }
+} else {
+  ok("CSRF/origin validation is ENABLED on /api/auth/*");
+  if (!process.env.BETTER_AUTH_TRUSTED_ORIGINS) {
+    fail(
+      "BETTER_AUTH_DISABLE_CSRF=0 requires BETTER_AUTH_TRUSTED_ORIGINS to list every " +
+        "browser origin, otherwise sign-in returns 403 INVALID_ORIGIN",
+    );
+  }
+}
+
+// Trusted-proxy hop count drives per-IP rate limiting (see infrastructure/rate-limit/ip.ts)
+const hops = process.env.WBOS_TRUSTED_PROXY_HOPS;
+if (hops === "0") {
+  warn("WBOS_TRUSTED_PROXY_HOPS=0 — per-IP rate limits are disabled (no trusted proxy)");
+} else {
+  ok(`Trusted reverse-proxy hops: ${hops || "1 (default)"}`);
+}
+
 // ── Database ──
 console.log("\n2. Database Connection");
 
@@ -133,9 +165,8 @@ console.log("\n2. Database Connection");
 
   // ── PostgreSQL client/server major version match ──
   // A dump taken by pg_dump N cannot be reliably restored into a server older
-  // than N, and pg_dump refuses to dump from a server newer than itself. A
-  // silent mismatch means backups look fine and only fail at restore time —
-  // exactly the failure the DR work exists to prevent.
+  // than N. A silent mismatch here means backups look fine and only fail at
+  // restore time — exactly the failure the DR work exists to prevent.
   console.log("\n6b. PostgreSQL Version Match");
   if (pgDumpMajor === null) {
     warn("Could not determine pg_dump major version — skipping client/server check");

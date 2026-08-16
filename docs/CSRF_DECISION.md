@@ -139,3 +139,20 @@ Enable the check (`BETTER_AUTH_DISABLE_CSRF=0`) as part of the HTTPS/reverse-pro
 milestone, once a real domain exists and `trustedOrigins` can be set correctly —
 the two changes are naturally verified together, and neither is meaningful
 without the other.
+
+## 8. Phase 4 result — exercised through the real proxy
+
+The proxy/TLS phase ran the full stack (Caddy → app → PostgreSQL 17) with
+`BETTER_AUTH_DISABLE_CSRF=0` and `BETTER_AUTH_TRUSTED_ORIGINS` set to the HTTPS
+origin, and verified over genuine TLS:
+
+- web sign-up and sign-in from the trusted origin,
+- a cross-origin sign-in attempt, which must be rejected with `403`,
+- session cookie flags (`HttpOnly`, `Secure`, `SameSite=Lax`),
+- an authenticated session round-trip,
+- **mobile Bearer auth** (`/api/v1/auth/me` with no cookie and no `Origin`) —
+  the case this flag was originally added for.
+
+Results are recorded in `PRODUCTION_READINESS.md` under the Phase 4 audit entry.
+`.env.example` and the Day-0 checklist now carry `BETTER_AUTH_DISABLE_CSRF="0"`
+as the production setting, with the rollback being removal of that one variable.

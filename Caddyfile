@@ -1,0 +1,62 @@
+# WBOS reverse proxy / TLS termination.
+#
+# Deliberately minimal: Caddy obtains and renews certificates automatically,
+# redirects HTTP to HTTPS, and speaks plain HTTP to the app over the internal
+# Docker network. No nginx config to hand-maintain, no certbot cron.
+#
+# The hostname is NOT hardcoded. Both settings come from .env:
+#
+#   WBOS_DOMAIN=wbos.example.com
+#   WBOS_TLS=ops@example.com   # ACME (Let's Encrypt); email gets expiry notices
+#   WBOS_TLS=internal          # Caddy's local CA — offline/LAN/verification
+#
+# `internal` is the default on purpose: a misconfigured domain then fails to a
+# self-signed cert instead of burning Let's Encrypt rate limits on a name that
+# does not resolve.
+{
+	# Caddy is the only process the internet talks to. Keep its admin API off.
+	admin off
+}
+
+{$WBOS_DOMAIN:localhost} {
+	# Either `internal` (local CA) or an email address (ACME account).
+	tls {$WBOS_TLS:internal}
+
+	encode zstd gzip
+
+	header {
+		# Only meaningful under a publicly trusted cert; harmless with the local CA.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The health JSON exposes storage paths, disk sizes and backup state — useful
+	# to the operator and to nobody else, so it is not published. Host cron
+	# (scripts/health-alert.sh) reaches it directly on 127.0.0.1:3005, which is
+	# why the app keeps a loopback-only published port.
+	@health path /api/health
+	respond @health 404
+
+	# Caddy sets X-Forwarded-For / -Proto / -Host on its own; setting them
+	# explicitly here only produces "Unnecessary header_up" warnings on boot.
+	#
+	# Importantly, Caddy APPENDS the real client address to any client-supplied
+	# X-Forwarded-For, so the RIGHTMOST entry is the trustworthy one. That is
+	# exactly one proxy hop, which is why WBOS_TRUSTED_PROXY_HOPS=1 is the
+	# default in src/infrastructure/rate-limit/ip.ts.
+	#
+	# ⚠ Putting another proxy (Cloudflare, a load balancer) in front of Caddy
+	# adds a hop — increment WBOS_TRUSTED_PROXY_HOPS to match, or per-IP rate
+	# limiting will key on the wrong address.
+	reverse_proxy app:3000
+}
+
+# Plain HTTP. Caddy already auto-redirects the site above; this block also
+# catches requests arriving by IP or with an unknown Host, so nothing is ever
+# served unencrypted.
+:80 {
+	redir https://{$WBOS_DOMAIN:localhost}{uri} permanent
+}
