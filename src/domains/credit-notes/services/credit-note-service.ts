@@ -195,7 +195,8 @@ export class CreditNoteService {
     const [invoiceLines, products, unitsOfMeasure] = await Promise.all([
       prisma.invoiceLine.findMany({
         where: { invoiceId: invoice.id, organizationId: context.organizationId },
-        select: { id: true, productId: true },
+        select: { id: true, productId: true, lineNumber: true },
+        orderBy: { lineNumber: "asc" },
       }),
       prisma.product.findMany({
         where: { organizationId: context.organizationId, id: { in: productIds } },
@@ -207,14 +208,33 @@ export class CreditNoteService {
       }),
     ]);
 
-    const invoiceLineByProduct = new Map(invoiceLines.map((il) => [il.productId, il.id]));
+    /**
+     * First invoice line per product, in line order.
+     *
+     * Deliberately NOT a productId -> id map built by overwriting: the same
+     * product legitimately appears twice (a NORMAL paid line and a FREE_SAMPLE
+     * line), and a Map keeps the LAST entry, which silently attributed every
+     * credit to the zero-priced free-sample line. This is only a fallback —
+     * the return line's own invoiceLineId wins whenever it is known.
+     */
+    const firstInvoiceLineByProduct = new Map<string, string>();
+    for (const il of invoiceLines) {
+      if (!firstInvoiceLineByProduct.has(il.productId)) {
+        firstInvoiceLineByProduct.set(il.productId, il.id);
+      }
+    }
+    const invoiceLineIds = new Set(invoiceLines.map((il) => il.id));
     const productMap = new Map(products.map((p) => [p.id, p]));
     const uomMap = new Map(unitsOfMeasure.map((u) => [u.id, u]));
 
     const lines = restockLines.map((l) => {
       const product = productMap.get(l.productId);
       const uom = uomMap.get(l.unitOfMeasureId);
-      const resolvedInvoiceLineId = invoiceLineByProduct.get(l.productId) ?? l.invoiceLineId;
+      // Prefer the exact source line; fall back to line order only when the
+      // return does not record which invoice line it came from.
+      const exact =
+        l.invoiceLineId && invoiceLineIds.has(l.invoiceLineId) ? l.invoiceLineId : null;
+      const resolvedInvoiceLineId = exact ?? firstInvoiceLineByProduct.get(l.productId) ?? null;
       return {
         invoiceLineId: resolvedInvoiceLineId ?? "",
         productId: l.productId,
