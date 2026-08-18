@@ -28,11 +28,18 @@ export class NotificationRepository {
     });
   }
 
-  async markAsRead(id: string) {
-    return prisma.notification.update({
-      where: { id },
+  /**
+   * Scoped to the owning user, mirroring `deleteById`. `update({ where: { id } })`
+   * would happily mark any notification in any organization as read, because a
+   * bare id is not an authorization decision. Returns the affected-row count so
+   * the caller can distinguish "not yours" from "done" without leaking which.
+   */
+  async markAsRead(organizationId: string, userId: string, id: string) {
+    const result = await prisma.notification.updateMany({
+      where: { id, organizationId, userId },
       data: { isRead: true },
     });
+    return result.count;
   }
 
   async markAllAsRead(organizationId: string, userId: string) {

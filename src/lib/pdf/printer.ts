@@ -4,7 +4,10 @@ let browser: import("playwright").Browser | null = null;
 let browserPromise: Promise<import("playwright").Browser> | null = null;
 
 async function getBrowser() {
-  if (browser) return browser;
+  // A cached-but-crashed browser would make every later PDF fail, so the
+  // connection is re-checked rather than trusted.
+  if (browser?.isConnected()) return browser;
+  browser = null;
 
   if (!browserPromise) {
     browserPromise = chromium.launch({
@@ -18,7 +21,15 @@ async function getBrowser() {
     });
   }
 
-  browser = await browserPromise;
+  try {
+    browser = await browserPromise;
+  } catch (error) {
+    // Without this the rejected promise stays cached and the PDF subsystem is
+    // permanently broken until the process restarts.
+    browserPromise = null;
+    throw error;
+  }
+
   return browser;
 }
 
@@ -29,30 +40,32 @@ export async function generatePdfFromUrl(url: string): Promise<Uint8Array> {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HKL, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
 
-  const page = await context.newPage();
+  try {
+    const page = await context.newPage();
 
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1500);
+    await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(1500);
 
-  const printRootCount = await page.locator(".print-page").count().catch(() => 0);
-  if (printRootCount === 0) {
-    await context.close();
-    throw new Error(
-      "Playwright was redirected to /sign-in. The download token may be invalid or expired, " +
-        "or the print route may not be properly configured to accept token-based auth.",
-    );
+    const printRootCount = await page.locator(".print-page").count().catch(() => 0);
+    if (printRootCount === 0) {
+      throw new Error(
+        "Playwright was redirected to /sign-in. The download token may be invalid or expired, " +
+          "or the print route may not be properly configured to accept token-based auth.",
+      );
+    }
+
+    const buffer = await page.pdf({
+      format: "A4",
+      margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+
+    return buffer as unknown as Uint8Array;
+  } finally {
+    await context.close().catch(() => {});
   }
-
-  const buffer = await page.pdf({
-    format: "A4",
-    margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
-    printBackground: true,
-    preferCSSPageSize: true,
-  });
-
-  await context.close();
-  return buffer as unknown as Uint8Array;
 }
 
 export async function generatePdfFromHtml(html: string): Promise<Uint8Array> {
@@ -62,19 +75,22 @@ export async function generatePdfFromHtml(html: string): Promise<Uint8Array> {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
 
-  const page = await context.newPage();
-  await page.setContent(html, { waitUntil: "networkidle" });
-  await page.waitForTimeout(500);
+  try {
+    const page = await context.newPage();
+    await page.setContent(html, { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
 
-  const buffer = await page.pdf({
-    format: "A4",
-    margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
-    printBackground: true,
-    preferCSSPageSize: true,
-  });
+    const buffer = await page.pdf({
+      format: "A4",
+      margin: { top: "10mm", bottom: "10mm", left: "15mm", right: "15mm" },
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
 
-  await context.close();
-  return buffer as unknown as Uint8Array;
+    return buffer as unknown as Uint8Array;
+  } finally {
+    await context.close().catch(() => {});
+  }
 }
 
 export async function closeBrowser() {

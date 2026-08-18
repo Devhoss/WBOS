@@ -44,6 +44,7 @@ export const ACCOUNT_RULES = {
   "task-complete": { limit: 120, windowMs: 60_000 },
   "task-cancel": { limit: 120, windowMs: 60_000 },
   "task-line-update": { limit: 120, windowMs: 60_000 },
+  "notification-read": { limit: 120, windowMs: 60_000 },
   "notification-read-all": { limit: 60, windowMs: 60_000 },
   "notification-clear-read": { limit: 60, windowMs: 60_000 },
   "notification-delete": { limit: 60, windowMs: 60_000 },

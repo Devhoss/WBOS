@@ -75,8 +75,8 @@ export class NotificationService {
     return this.repo.countUnread(organizationId, userId);
   }
 
-  async markAsRead(id: string) {
-    return this.repo.markAsRead(id);
+  async markAsRead(organizationId: string, userId: string, id: string) {
+    return this.repo.markAsRead(organizationId, userId, id);
   }
 
   async markAllAsRead(organizationId: string, userId: string) {
