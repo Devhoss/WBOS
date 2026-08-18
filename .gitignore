@@ -35,3 +35,8 @@ Thumbs.db
 .secrets/
 /secrets/
 firebase-admin*.json
+# Environment files — never commit real values.
+# .env.development was tracked because the old rules only covered
+# .env, .env.local and .env.*.local, and it matched none of them.
+.env*
+!.env.example
