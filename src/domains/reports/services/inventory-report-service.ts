@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import {
+  REVENUE_INVOICE_STATUSES,
+  REVENUE_REDUCING_CREDIT_NOTE_STATUSES,
+} from "../revenue-recognition";
 import { InventoryValuationService, type InventoryValuationRow } from "@/domains/inventory/services/inventory-valuation-service";
 import { BaseReportRepository, type ReportDateRange } from "../repositories/base-report-repository";
 
@@ -637,7 +641,8 @@ export class InventoryReportService extends BaseReportRepository {
     const invoices = await prisma.invoice.findMany({
       where: {
         organizationId,
-        status: { in: ["ISSUED", "PAID"] },
+        // A sale is a sale regardless of how much of it has been collected.
+        status: { in: [...REVENUE_INVOICE_STATUSES] },
         ...(dateFilter.gte || dateFilter.lte ? { issuedAt: { ...dateFilter } } : {}),
       },
       select: {
@@ -663,6 +668,27 @@ export class InventoryReportService extends BaseReportRepository {
         totalPrice: true,
       },
     });
+
+    /**
+     * Credits are attributed to the exact invoice line they were raised
+     * against — credit note lines carry `invoiceLineId` — so a credit against a
+     * paid line never lands on a duplicate free-sample line for the same
+     * product. Only ISSUED credit notes count: a cancelled one has already
+     * released its claim on the invoice.
+     */
+    const creditLines = await prisma.creditNoteLine.groupBy({
+      by: ["invoiceLineId"],
+      where: {
+        organizationId,
+        invoiceLineId: { in: invoiceLines.map((il) => il.id) },
+        creditNote: { status: { in: [...REVENUE_REDUCING_CREDIT_NOTE_STATUSES] } },
+      },
+      _sum: { totalPrice: true },
+    });
+
+    const creditByInvoiceLine = new Map(
+      creditLines.map((c) => [c.invoiceLineId, this.toNumber(c._sum.totalPrice)]),
+    );
 
     const soLineIds = [...new Set(invoiceLines.map((il) => il.salesOrderLineId))];
 
@@ -728,7 +754,8 @@ export class InventoryReportService extends BaseReportRepository {
       const inv = invoiceMap.get(il.invoiceId);
       if (!inv) continue;
 
-      const revenue = this.toNumber(il.totalPrice);
+      // Revenue net of anything credited back against this exact line.
+      const revenue = this.toNumber(il.totalPrice) - (creditByInvoiceLine.get(il.id) ?? 0);
       let cogs = 0;
 
       const shipmentLine = soLineToShipmentLine.get(il.salesOrderLineId);

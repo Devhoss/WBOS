@@ -6,6 +6,7 @@ import { existsSync } from "fs";
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { assertStorageCapacity } from "@/infrastructure/storage/assert-capacity";
 import { BusinessError } from "@/shared/errors/business-error";
@@ -16,9 +17,7 @@ export async function uploadLogoAction(formData: FormData) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!new Set(["OWNER", "ADMIN", "MANAGER"]).has(context.role)) {
-      throw new BusinessError("You do not have permission to update settings.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     const file = formData.get("logo") as File | null;
 

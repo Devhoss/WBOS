@@ -89,7 +89,7 @@ export default async function SalesOrderDetailPage({
   );
 
   const warehouseWorkers = (await prisma.organizationMembership.findMany({
-    where: { organizationId: context.organizationId, role: { in: ["WAREHOUSE", "MANAGER", "ADMIN", "OWNER"] } },
+    where: { organizationId: context.organizationId, role: { in: ["OWNER", "MANAGER"] } },
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { user: { name: "asc" } },
   })).filter((m) => m.user.email !== "system@wbos.local");

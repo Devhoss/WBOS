@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -18,7 +18,7 @@ export async function updateCycleCountLine(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
 
     const line = await new CycleCountService().updateLine(context, parsed.data);
     revalidatePath("/inventory/cycle-counts");

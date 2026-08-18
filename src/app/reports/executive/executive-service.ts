@@ -1,4 +1,10 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/infrastructure/database/prisma";
+import {
+  REVENUE_INVOICE_STATUSES,
+  REVENUE_REDUCING_CREDIT_NOTE_STATUSES,
+} from "@/domains/reports/revenue-recognition";
 import { InventoryValuationService } from "@/domains/inventory/services/inventory-valuation-service";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -112,11 +118,20 @@ export class ExecutiveService {
     const monthStart = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth(), 1);
 
     // Revenue COGS via inventory ledger (same filter as InventoryReportService.cogs)
-    const [revenueResult, cogsResult, trendRows, topProductRows] = await Promise.all([
+    const [revenueResult, creditResult, cogsResult, trendRows, topProductRows] = await Promise.all([
       prisma.invoice.aggregate({
         where: {
           organizationId,
-          status: { in: ["ISSUED", "PAID"] },
+          // Payment status must not make a completed sale disappear.
+          status: { in: [...REVENUE_INVOICE_STATUSES] },
+        },
+        _sum: { totalAmount: true },
+      }),
+      prisma.creditNote.aggregate({
+        where: {
+          organizationId,
+          status: { in: [...REVENUE_REDUCING_CREDIT_NOTE_STATUSES] },
+          invoice: { status: { in: [...REVENUE_INVOICE_STATUSES] } },
         },
         _sum: { totalAmount: true },
       }),
@@ -129,18 +144,19 @@ export class ExecutiveService {
         _sum: { totalCost: true },
       }),
       prisma.$queryRaw<{ month: Date; total: unknown }[]>`
-        SELECT DATE_TRUNC('month', "issuedAt") AS "month", SUM("totalAmount") AS "total"
-        FROM invoices
-        WHERE "organizationId" = ${organizationId}
-          AND "status" IN ('ISSUED', 'PAID')
-          AND "issuedAt" >= ${monthStart}
-        GROUP BY DATE_TRUNC('month', "issuedAt")
+        SELECT DATE_TRUNC('month', i."issuedAt") AS "month",
+               SUM(i."totalAmount" - i."creditedAmount") AS "total"
+        FROM invoices i
+        WHERE i."organizationId" = ${organizationId}
+          AND i."status" IN (${Prisma.join(REVENUE_INVOICE_STATUSES.map((v) => Prisma.sql`${v}::"InvoiceStatus"`))})
+          AND i."issuedAt" >= ${monthStart}
+        GROUP BY DATE_TRUNC('month', i."issuedAt")
         ORDER BY "month" ASC
       `,
       prisma.invoiceLine.groupBy({
         by: ["productId"],
         where: {
-          invoice: { organizationId, status: { in: ["ISSUED", "PAID"] } },
+          invoice: { organizationId, status: { in: [...REVENUE_INVOICE_STATUSES] } },
         },
         _sum: { totalPrice: true },
         orderBy: { _sum: { totalPrice: "desc" } },
@@ -148,7 +164,10 @@ export class ExecutiveService {
       }),
     ]);
 
-    const totalRevenue = Number(revenueResult._sum.totalAmount ?? 0);
+    // Credit notes net off the sales they reverse, rather than the sale being
+    // dropped from the report entirely.
+    const totalRevenue =
+      Number(revenueResult._sum.totalAmount ?? 0) - Number(creditResult._sum.totalAmount ?? 0);
     const totalCogs = Number(cogsResult._sum.totalCost ?? 0);
     const grossProfit = totalRevenue - totalCogs;
     const grossMarginPercent = totalRevenue > 0

@@ -13,8 +13,7 @@ import { DocumentTimeline } from "@/app/document-timeline";
 
 import { TaskDetailActions } from "./task-detail-actions";
 import { RescheduleTaskForm } from "./reschedule-task-form";
-import { hasMinimumRole } from "@/infrastructure/authorization/rbac";
-
+import { canManage } from "@/infrastructure/authorization/rbac";
 const typeLabels: Record<string, string> = {
   PICK_ORDER: "Pick Order",
   GOODS_RECEIPT: "Goods Receipt",
@@ -58,7 +57,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const canComplete = task.status === "IN_PROGRESS";
   const canCancel = task.status !== "COMPLETED" && task.status !== "CANCELLED";
   const canReschedule =
-    hasMinimumRole(context.role, "MANAGER") &&
+    canManage(context.role) &&
     (task.status === "SCHEDULED" || task.status === "READY");
 
   return (

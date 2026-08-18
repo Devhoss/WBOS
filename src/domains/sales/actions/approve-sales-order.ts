@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { SalesOrderService } from "../services/sales-order-service";
 import { salesOrderStatusActionSchema } from "../validation/sales-order-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER"]);
 
 export async function approveSalesOrderAction(input: unknown) {
   const parsed = salesOrderStatusActionSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function approveSalesOrderAction(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to approve sales orders.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new SalesOrderService().approve(context, parsed.data.id);
     revalidatePath("/sales");

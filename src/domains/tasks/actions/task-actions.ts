@@ -70,9 +70,9 @@ export async function createPickTaskAction(salesOrderId: string, assignedToId?: 
     const { SalesOrderRepository } = await import("@/domains/sales/repositories/sales-order-repository");
     const { ShipmentRepository } = await import("@/domains/sales/repositories/shipment-repository");
     const { TaskDomainService } = await import("@/domains/tasks/services/task-domain-service");
-    const { requireMinimumRole } = await import("@/infrastructure/authorization/rbac");
+    const { requireManager } = await import("@/infrastructure/authorization/rbac");
 
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
 
     const orders = new SalesOrderRepository();
     const order = await orders.findById(context.organizationId, salesOrderId);

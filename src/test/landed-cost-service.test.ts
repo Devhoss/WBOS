@@ -75,14 +75,30 @@ import { BusinessError } from "@/shared/errors/business-error";
 
 const D = (v: number | string) => new Prisma.Decimal(v);
 
+/**
+ * MANAGER by default, deliberately.
+ *
+ * Recording and posting landed costs used to require FINANCE, ADMIN or OWNER —
+ * MANAGER was excluded by name even though it outranked FINANCE numerically.
+ * With the role model reduced to OWNER and MANAGER this is ordinary operational
+ * work, so the whole suite runs as a MANAGER to prove that.
+ */
 function mockContext(overrides = {}) {
   return {
     organizationId: "org-1",
     userId: "user-1",
-    role: "ADMIN",
+    role: "MANAGER",
     ...overrides,
   } as never;
 }
+
+/**
+ * A role value that no longer exists in the enum, standing in for a stale
+ * session or a hand-edited row. The guard must refuse it outright rather than
+ * ranking it into permissions — which is exactly what the old numeric ladder
+ * would have done.
+ */
+const REMOVED_ROLE = { role: "VIEWER" };
 
 function makeLandedCost(overrides = {}) {
   return {
@@ -250,10 +266,10 @@ describe("LandedCostService", () => {
       expect(mockPrisma.landedCostLine.create).toHaveBeenCalledTimes(1);
     });
 
-    it("rejects viewers", async () => {
+    it("rejects a role that no longer exists in the model", async () => {
       await expect(
         service.create(
-          mockContext({ role: "VIEWER" }),
+          mockContext(REMOVED_ROLE),
           {
             allocationBasis: "BY_VALUE",
             currency: "KWD",
@@ -545,10 +561,10 @@ describe("LandedCostService", () => {
       expect(sql.values).toContain("org-1");
     });
 
-    it("rejects viewers", async () => {
+    it("rejects a role that no longer exists in the model", async () => {
       mockPrisma.landedCost.findFirst.mockResolvedValue(mockDraftLandedCost());
 
-      await expect(service.post(mockContext({ role: "VIEWER" }), "lc-1")).rejects.toBeInstanceOf(
+      await expect(service.post(mockContext(REMOVED_ROLE), "lc-1")).rejects.toBeInstanceOf(
         BusinessError,
       );
 
@@ -699,10 +715,10 @@ describe("LandedCostService", () => {
       expect(mockPosting.post).not.toHaveBeenCalled();
     });
 
-    it("rejects viewers", async () => {
+    it("rejects a role that no longer exists in the model", async () => {
       mockPrisma.landedCost.findFirst.mockResolvedValue(mockPostedLandedCost());
 
-      await expect(service.cancel(mockContext({ role: "VIEWER" }), "lc-1")).rejects.toBeInstanceOf(
+      await expect(service.cancel(mockContext(REMOVED_ROLE), "lc-1")).rejects.toBeInstanceOf(
         BusinessError,
       );
 

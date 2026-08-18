@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 
 import { AppShell } from "@/components/app-shell";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
-
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { BackupService } from "@/domains/backups/services/backup-service";
 import { BackupPanel } from "./backup-panel";
 
@@ -11,7 +10,7 @@ export const metadata: Metadata = { title: "Backup & Restore" };
 
 export default async function SettingsBackupsPage() {
   const context = await new AuthenticatedRequestContextService().getCurrentContext();
-  requireMinimumRole(context, "MANAGER");
+  requireManager(context);
 
   const service = new BackupService();
   const [backups, status] = await Promise.all([service.listBackups(), service.getStatus()]);

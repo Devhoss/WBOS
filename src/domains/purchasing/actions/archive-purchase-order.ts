@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -18,9 +19,7 @@ export async function archivePurchaseOrder(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!new Set(["OWNER", "ADMIN"]).has(context.role)) {
-      throw new BusinessError("You do not have permission to archive purchase orders.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new PurchaseOrderService().archive(context, parsed.data.id);
     revalidatePath("/purchasing");

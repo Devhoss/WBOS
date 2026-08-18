@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { GoodsReceiptService } from "../services/goods-receipt-service";
 import { goodsReceiptSchema } from "../validation/goods-receipt-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function receiveGoods(input: unknown) {
   const parsed = goodsReceiptSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function receiveGoods(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to receive goods.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new GoodsReceiptService().receive(context, parsed.data);
     revalidatePath("/purchasing");

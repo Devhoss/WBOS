@@ -4,7 +4,7 @@ import { join, basename } from "node:path";
 
 import { NextResponse } from "next/server";
 
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireOwner } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -17,7 +17,7 @@ export async function GET(
   try {
     const { fileName } = await params;
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "ADMIN");
+    requireOwner(context);
 
     if (!fileName.startsWith(BACKUP_PACKAGE_PREFIX) || !fileName.endsWith(".tar.gz") || fileName !== basename(fileName)) {
       return new NextResponse(null, { status: 404 });

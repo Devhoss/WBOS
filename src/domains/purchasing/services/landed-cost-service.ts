@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import type { LandedCostAllocationBasis, OrganizationRole } from "@prisma/client";
+import type { LandedCostAllocationBasis } from "@prisma/client";
 
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
@@ -7,22 +7,20 @@ import { CostingService } from "@/domains/inventory/services/costing-service";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
 import { StockBalanceService } from "@/domains/inventory/services/stock-balance-service";
 import { prisma } from "@/infrastructure/database/prisma";
-import { requireAnyRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { AllocationService, type AllocationCell, type AllocationResult } from "./allocation-service";
 import type { LandedCostCreateInput, LandedCostUpdateInput } from "../validation/landed-cost-schema";
 
-const DRAFT_EDIT_ROLES: readonly OrganizationRole[] = [
-  "WAREHOUSE",
-  "FINANCE",
-  "MANAGER",
-  "ADMIN",
-  "OWNER",
-];
-
-const POST_ROLES: readonly OrganizationRole[] = ["FINANCE", "ADMIN", "OWNER"];
+/**
+ * Editing a draft landed cost was open to every role except VIEWER, and posting
+ * one was reserved for FINANCE, ADMIN and OWNER — notably NOT MANAGER, which
+ * outranked FINANCE numerically but was excluded from posting by name. With
+ * FINANCE and ADMIN gone, both sets collapse onto the ordinary operational
+ * check: recording and posting landed costs is routine business work here.
+ */
 
 export class LandedCostService {
   constructor(
@@ -35,7 +33,7 @@ export class LandedCostService {
   ) {}
 
   async create(context: AuthenticatedRequestContext, input: LandedCostCreateInput) {
-    requireAnyRole(context, DRAFT_EDIT_ROLES);
+    requireManager(context);
 
     const now = new Date();
     const { documentNumber } = await this.documents.generate({
@@ -79,7 +77,7 @@ export class LandedCostService {
   }
 
   async update(context: AuthenticatedRequestContext, id: string, input: Omit<LandedCostUpdateInput, "id">) {
-    requireAnyRole(context, DRAFT_EDIT_ROLES);
+    requireManager(context);
 
     const existing = await this.findById(context.organizationId, id);
 
@@ -163,7 +161,7 @@ export class LandedCostService {
   }
 
   async linkReceipts(context: AuthenticatedRequestContext, id: string, transactionIds: string[]) {
-    requireAnyRole(context, DRAFT_EDIT_ROLES);
+    requireManager(context);
 
     const existing = await this.findById(context.organizationId, id);
 
@@ -258,7 +256,7 @@ export class LandedCostService {
     id: string,
     cells: Array<{ lineId: string; expenseId: string; amount: Prisma.Decimal.Value }>,
   ) {
-    requireAnyRole(context, DRAFT_EDIT_ROLES);
+    requireManager(context);
 
     const existing = await this.findById(context.organizationId, id);
 
@@ -560,7 +558,7 @@ export class LandedCostService {
   }
 
   async post(context: AuthenticatedRequestContext, id: string) {
-    requireAnyRole(context, POST_ROLES);
+    requireManager(context);
 
     return prisma.$transaction(async (tx) => {
       const locked = await this.lockLandedCost(tx, context.organizationId, id);
@@ -827,7 +825,7 @@ export class LandedCostService {
   }
 
   async cancel(context: AuthenticatedRequestContext, id: string) {
-    requireAnyRole(context, POST_ROLES);
+    requireManager(context);
 
     return prisma.$transaction(async (tx) => {
       const locked = await this.lockLandedCost(tx, context.organizationId, id);

@@ -1,12 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 import { CreditNoteService } from "../services/credit-note-service";
 import { issueCreditNoteSchema } from "../validation/credit-note-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "FINANCE"]);
 
 export async function issueCreditNoteAction(input: unknown) {
   const parsed = issueCreditNoteSchema.safeParse(input);
@@ -16,9 +15,7 @@ export async function issueCreditNoteAction(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to issue credit notes.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     const result = await new CreditNoteService().issue(context, parsed.data);
     revalidatePath("/credit-notes");

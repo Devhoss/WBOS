@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { PurchaseOrderService } from "../services/purchase-order-service";
 import { updatePurchaseOrderStatusSchema } from "../validation/purchase-order-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN"]);
 
 export async function approvePurchaseOrder(input: unknown) {
   const parsed = updatePurchaseOrderStatusSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function approvePurchaseOrder(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to approve purchase orders.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new PurchaseOrderService().approve(context, parsed.data.id);
     revalidatePath("/purchasing");

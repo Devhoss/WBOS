@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { WarehouseTransferService } from "../services/warehouse-transfer-service";
 import { warehouseTransferSchema } from "../validation/warehouse-transfer-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function createWarehouseTransfer(input: unknown) {
   const parsed = warehouseTransferSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function createWarehouseTransfer(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to transfer inventory.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new WarehouseTransferService().transfer(context, parsed.data);
     revalidatePath("/inventory/transfers");

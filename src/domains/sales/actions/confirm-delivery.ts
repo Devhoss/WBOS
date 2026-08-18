@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
@@ -9,8 +10,6 @@ import { ShipmentRepository } from "@/domains/sales/repositories/shipment-reposi
 
 import { ShipmentService } from "../services/shipment-service";
 import { shipmentStatusActionSchema } from "../validation/shipment-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function confirmDeliveryAction(input: unknown) {
   const parsed = shipmentStatusActionSchema.safeParse(input);
@@ -25,9 +24,7 @@ export async function confirmDeliveryAction(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to confirm delivery.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new ShipmentService().deliver(context, parsed.data.id);
 

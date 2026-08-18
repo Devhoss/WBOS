@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -18,7 +18,7 @@ export async function linkSupplierInvoice(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "MANAGER");
+    requireManager(context);
 
     const shipment = await new ImportShipmentService().linkSupplierInvoice(context, parsed.data);
 
@@ -44,7 +44,7 @@ export async function linkLandedCost(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "MANAGER");
+    requireManager(context);
 
     const shipment = await new ImportShipmentService().linkLandedCost(context, parsed.data);
 

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SalesOrderRepository } from "@/domains/sales/repositories/sales-order-repository";
 import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
 import { TaskDomainService } from "@/domains/tasks/services/task-domain-service";
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -21,7 +21,7 @@ export async function POST(
     const { soId } = await params;
     const body = await req.json().catch(() => ({}));
 
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
 
     const order = await orders.findById(context.organizationId, soId);
     if (!order) {

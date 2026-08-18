@@ -1,12 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 import { ReturnOrderService } from "../services/return-order-service";
 import { createReturnOrderSchema } from "../validation/return-order-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "SALES"]);
 
 export async function createReturnAction(input: unknown) {
   const parsed = createReturnOrderSchema.safeParse(input);
@@ -16,9 +15,7 @@ export async function createReturnAction(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to create returns.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     const result = await new ReturnOrderService().create(context, parsed.data);
     revalidatePath("/returns");

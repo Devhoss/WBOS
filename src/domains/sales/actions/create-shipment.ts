@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { ShipmentService } from "../services/shipment-service";
 import { createShipmentSchema } from "../validation/shipment-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function createShipmentAction(input: unknown) {
   const parsed = createShipmentSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function createShipmentAction(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to create shipments.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     const shipment = await new ShipmentService().create(context, parsed.data);
     revalidatePath("/sales");

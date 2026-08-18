@@ -1,4 +1,4 @@
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessCalendar } from "@/lib/business-calendar";
 
@@ -32,7 +32,7 @@ export class TaskApplicationService {
     context: AuthenticatedRequestContext,
     filters: TaskFilters = {},
   ): Promise<{ tasks: TaskSummary[]; total: number }> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     const calendar = new BusinessCalendar(context.organization.timezone);
     const scheduleBoundary = new Date();
     const { data, total } = await this.domain.findMany(context.organizationId, filters, scheduleBoundary);
@@ -50,7 +50,7 @@ export class TaskApplicationService {
     context: AuthenticatedRequestContext,
     taskId: string,
   ): Promise<ComposedTaskDetail | null> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     return this.domain.findById(context.organizationId, taskId, new Date());
   }
 
@@ -59,7 +59,7 @@ export class TaskApplicationService {
     taskId: string,
     updatedAt: string,
   ): Promise<ComposedTaskDetail> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     const optimisticUpdatedAt = parseOptimisticDate(updatedAt);
     return this.domain.start(context, taskId, optimisticUpdatedAt);
   }
@@ -69,7 +69,7 @@ export class TaskApplicationService {
     taskId: string,
     updatedAt: string,
   ): Promise<ComposedTaskDetail> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     const optimisticUpdatedAt = parseOptimisticDate(updatedAt);
     return this.domain.complete(context, taskId, optimisticUpdatedAt);
   }
@@ -80,7 +80,7 @@ export class TaskApplicationService {
     reason: string | null,
     updatedAt: string,
   ): Promise<ComposedTaskDetail> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     const optimisticUpdatedAt = parseOptimisticDate(updatedAt);
     return this.domain.cancel(context, taskId, reason, optimisticUpdatedAt);
   }
@@ -91,7 +91,7 @@ export class TaskApplicationService {
     dueAt: string,
     updatedAt: string,
   ): Promise<ComposedTaskDetail> {
-    requireMinimumRole(context, "MANAGER");
+    requireManager(context);
     const optimisticUpdatedAt = parseOptimisticDate(updatedAt);
     const parsedDueAt = new Date(dueAt);
     return this.domain.reschedule(context, taskId, parsedDueAt, optimisticUpdatedAt);
@@ -101,7 +101,7 @@ export class TaskApplicationService {
     context: AuthenticatedRequestContext,
     taskId: string,
   ): Promise<PickingDetail | null> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     return this.domain.getPickingDetail(context.organizationId, taskId, new Date());
   }
 
@@ -111,7 +111,7 @@ export class TaskApplicationService {
     lineId: string,
     completedQuantity: number,
   ): Promise<ComposedTaskDetail> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     return this.domain.updateLine(context, taskId, lineId, completedQuantity);
   }
 
@@ -120,7 +120,7 @@ export class TaskApplicationService {
     taskId: string,
     input: PickScanActionInput,
   ): Promise<PickingDetail> {
-    requireMinimumRole(context, "WAREHOUSE");
+    requireManager(context);
     return this.domain.applyPickScanAction(context, taskId, input);
   }
 }

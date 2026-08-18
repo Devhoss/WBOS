@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/infrastructure/database/prisma";
 import { revalidatePath } from "next/cache";
 
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireOwner } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -16,7 +16,7 @@ export async function deleteSalesOrder(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "ADMIN");
+    requireOwner(context);
 
     const order = await prisma.salesOrder.findFirst({
       where: { id: parsed.data.id, organizationId: context.organizationId },

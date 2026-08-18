@@ -5,6 +5,7 @@ import { DocumentNumberService } from "@/domains/documents/services/document-num
 import { CreditNoteRepository } from "../repositories/credit-note-repository";
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
 import { calculateDocumentTotals } from "@/shared/money/document-totals";
+import { deriveInvoicePaymentStatus } from "@/domains/sales/services/invoice-payment-status";
 import type { IssueCreditNoteInput } from "../validation/credit-note-schema";
 
 export class CreditNoteService {
@@ -110,17 +111,19 @@ export class CreditNoteService {
         tx,
       );
 
-      // Status is derived from the post-increment authoritative figure, not
-      // from the value this request happened to compute.
+      // Status is derived from the post-increment authoritative figures, not
+      // from the value this request happened to compute, and through the same
+      // rule the cancel path and the payment path use.
       const settled = await tx.invoice.findFirstOrThrow({
         where: { id: input.invoiceId, organizationId: context.organizationId },
-        select: { creditedAmount: true, totalAmount: true },
+        select: { creditedAmount: true, totalAmount: true, amountPaid: true, status: true },
       });
 
-      if (new Prisma.Decimal(settled.creditedAmount).greaterThanOrEqualTo(settled.totalAmount)) {
+      const nextStatus = deriveInvoicePaymentStatus(settled, settled.status);
+      if (nextStatus !== settled.status) {
         await tx.invoice.updateMany({
           where: { id: input.invoiceId, organizationId: context.organizationId },
-          data: { status: "CREDITED" },
+          data: { status: nextStatus },
         });
       }
 
@@ -223,6 +226,24 @@ export class CreditNoteService {
           "Cancelling this credit note would drive the invoice credited amount below zero.",
           "CREDIT_NOTE_RELEASE_UNDERFLOW",
         );
+      }
+
+      // CREDITED describes the invoice's current financial state. Releasing the
+      // credit must therefore release the status too, or a cancelled credit
+      // note would leave a live, collectable invoice permanently marked as
+      // written off. Read back inside the transaction so the decision is made
+      // on the post-decrement figures, never on the pre-read ones.
+      const settled = await tx.invoice.findFirstOrThrow({
+        where: { id: creditNote.invoiceId, organizationId: context.organizationId },
+        select: { creditedAmount: true, totalAmount: true, amountPaid: true, status: true },
+      });
+
+      const nextStatus = deriveInvoicePaymentStatus(settled, settled.status);
+      if (nextStatus !== settled.status) {
+        await tx.invoice.updateMany({
+          where: { id: creditNote.invoiceId, organizationId: context.organizationId },
+          data: { status: nextStatus },
+        });
       }
     });
 

@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import { CostingService } from "@/domains/inventory/services/costing-service";
 
-const { mockProductCost, mockLedgerEntry } = vi.hoisted(() => ({
+const { mockProductCost, mockLedgerEntry, mockTx } = vi.hoisted(() => ({
   mockProductCost: {
     findUnique: vi.fn(),
     create: vi.fn(),
     updateMany: vi.fn(),
+    upsert: vi.fn(),
   },
   mockLedgerEntry: {
     update: vi.fn(),
+  },
+  mockTx: {
+    $executeRaw: vi.fn(),
   },
 }));
 
@@ -47,13 +51,16 @@ describe("CostingService", () => {
     tx = {
       productCost: mockProductCost,
       inventoryLedgerEntry: mockLedgerEntry,
+      $executeRaw: mockTx.$executeRaw,
     };
   });
 
   describe("recordReceipt", () => {
-    it("creates ProductCost and updates ledger on first receipt", async () => {
-      mockProductCost.findUnique.mockResolvedValue(null);
-      mockProductCost.create.mockResolvedValue({ id: "new-cost" });
+    it("folds the first receipt in with a single upsert, never a bare create", async () => {
+      // The old shape read first and branched to create() when nothing was
+      // found. Two concurrent first receipts both took that branch and the
+      // loser raised a raw unique violation. There is now no read at all.
+      mockProductCost.upsert.mockResolvedValue({ id: "new-cost" });
 
       await service.recordReceipt(
         {
@@ -67,15 +74,25 @@ describe("CostingService", () => {
         tx as never,
       );
 
-      expect(mockProductCost.create).toHaveBeenCalledWith({
-        data: {
+      expect(mockProductCost.findUnique).not.toHaveBeenCalled();
+      expect(mockProductCost.create).not.toHaveBeenCalled();
+      expect(mockProductCost.upsert).toHaveBeenCalledTimes(1);
+
+      const args = mockProductCost.upsert.mock.calls[0][0];
+      expect(args.where).toEqual({
+        organizationId_productId_warehouseId: {
           organizationId: "org-1",
           productId: "prod-1",
           warehouseId: "wh-1",
-          averageCost: D(5),
-          totalQuantity: D(10),
-          totalValue: D(50),
         },
+      });
+      expect(args.create).toMatchObject({
+        organizationId: "org-1",
+        productId: "prod-1",
+        warehouseId: "wh-1",
+        averageCost: D(5),
+        totalQuantity: D(10),
+        totalValue: D(50),
       });
 
       expect(mockLedgerEntry.update).toHaveBeenCalledWith({
@@ -84,9 +101,10 @@ describe("CostingService", () => {
       });
     });
 
-    it("updates weighted average on subsequent receipt", async () => {
-      mockProductCost.findUnique.mockResolvedValue(makeCost());
-      mockProductCost.updateMany.mockResolvedValue({ count: 1 });
+    it("adds to an existing record with increments, so nothing can be overwritten", async () => {
+      // Increments are evaluated by PostgreSQL against the committed row, so a
+      // concurrent receipt cannot lose its contribution to a stale read.
+      mockProductCost.upsert.mockResolvedValue({ id: "cost-1" });
 
       await service.recordReceipt(
         {
@@ -100,15 +118,16 @@ describe("CostingService", () => {
         tx as never,
       );
 
-      // Old: 10qty @ $5 = $50. Receipt: 10qty @ $15 = $150. New avg = $200/20 = $10.
-      expect(mockProductCost.updateMany).toHaveBeenCalledWith({
-        where: { id: "cost-1", updatedAt: new Date("2026-07-30T10:00:00Z") },
-        data: {
-          averageCost: D(10),
-          totalQuantity: D(20),
-          totalValue: D(200),
-        },
+      const args = mockProductCost.upsert.mock.calls[0][0];
+      expect(args.update).toEqual({
+        totalQuantity: { increment: D(10) },
+        totalValue: { increment: D(150) },
       });
+
+      // No client-computed average is written on the update path: it is
+      // recomputed from the row's own committed columns.
+      expect(args.update.averageCost).toBeUndefined();
+      expect(mockTx.$executeRaw).toHaveBeenCalledTimes(1);
 
       expect(mockLedgerEntry.update).toHaveBeenCalledWith({
         where: { id: "entry-2" },
@@ -116,16 +135,8 @@ describe("CostingService", () => {
       });
     });
 
-    it("retries on concurrent update, then succeeds", async () => {
-      const staleUpdatedAt = new Date("2026-07-30T10:00:00Z");
-      const freshUpdatedAt = new Date("2026-07-30T10:00:01Z");
-
-      mockProductCost.findUnique
-        .mockResolvedValueOnce(makeCost({ updatedAt: staleUpdatedAt }))
-        .mockResolvedValueOnce(makeCost({ updatedAt: freshUpdatedAt }));
-
-      mockProductCost.updateMany.mockResolvedValueOnce({ count: 0 });
-      mockProductCost.updateMany.mockResolvedValueOnce({ count: 1 });
+    it("recomputes the average from the row itself, after the upsert", async () => {
+      mockProductCost.upsert.mockResolvedValue({ id: "cost-9" });
 
       await service.recordReceipt(
         {
@@ -139,40 +150,34 @@ describe("CostingService", () => {
         tx as never,
       );
 
-      expect(mockProductCost.updateMany).toHaveBeenCalledTimes(2);
-
-      expect(mockProductCost.updateMany).toHaveBeenNthCalledWith(1, {
-        where: { id: "cost-1", updatedAt: staleUpdatedAt },
-        data: expect.any(Object),
-      });
-
-      expect(mockProductCost.updateMany).toHaveBeenNthCalledWith(2, {
-        where: { id: "cost-1", updatedAt: freshUpdatedAt },
-        data: expect.any(Object),
-      });
-
-      expect(mockLedgerEntry.update).toHaveBeenCalledTimes(1);
+      const [strings, ...values] = mockTx.$executeRaw.mock.calls[0];
+      const sql = strings.join("?");
+      expect(sql).toContain("product_costs");
+      expect(sql).toContain('"totalValue" / "totalQuantity"');
+      // Guards against a divide-by-zero when a receipt nets the balance to nil.
+      expect(sql).toContain('WHEN "totalQuantity" = 0 THEN 0');
+      expect(values).toEqual(["cost-9"]);
     });
 
-    it("throws after exhausting retries", async () => {
-      mockProductCost.findUnique.mockResolvedValue(makeCost());
-      mockProductCost.updateMany.mockResolvedValue({ count: 0 });
+    it("uses no optimistic-lock retry loop for receipts any more", async () => {
+      mockProductCost.upsert.mockResolvedValue({ id: "cost-1" });
 
-      await expect(
-        service.recordReceipt(
-          {
-            organizationId: "org-1",
-            productId: "prod-1",
-            warehouseId: "wh-1",
-            quantity: D(5),
-            unitCost: D(10),
-            ledgerEntryId: "entry-4",
-          },
-          tx as never,
-        ),
-      ).rejects.toThrow("Cost record was modified concurrently");
+      await service.recordReceipt(
+        {
+          organizationId: "org-1",
+          productId: "prod-1",
+          warehouseId: "wh-1",
+          quantity: D(5),
+          unitCost: D(10),
+          ledgerEntryId: "entry-4",
+        },
+        tx as never,
+      );
 
-      expect(mockProductCost.updateMany).toHaveBeenCalledTimes(3);
+      // The retry loop existed to paper over a lost update. The row lock the
+      // upsert takes removes the race, so there is nothing left to retry.
+      expect(mockProductCost.updateMany).not.toHaveBeenCalled();
+      expect(mockLedgerEntry.update).toHaveBeenCalledTimes(1);
     });
   });
 

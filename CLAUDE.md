@@ -76,6 +76,8 @@ src/
 
 ### Key Patterns
 
+**Authorization:** Two roles only — `OWNER` and `MANAGER`. Use `requireManager()` for ordinary operational and business work, `requireOwner()` for irreversible/account-level work (deleting sales and purchase orders, backup download and restore), and `requireAnyRole()` for genuinely disjoint sets. There is deliberately **no** role ranking: never reintroduce a `hasMinimumRole`-style numeric comparison, and never gate an action with an ad-hoc `new Set([...]).has(context.role)`.
+
 **Organization context:** All data is scoped to `organizationId`. Use `getCachedContext()` from `@/infrastructure/request/authenticated-request-context` in Server Components. In services/repositories that run in Server Actions, use `AuthenticatedRequestContextService.getCurrentContext(requestHeaders)`.
 
 **Report services:** Extend `BaseReportRepository` (in `src/domains/reports/repositories/`) which provides `resolveOrganizationId()`, `buildDateFilter()`, and `toNumber()`. Report pages in `src/app/reports/` are Server Components that wrap content in `AppShell` + `ReportLayout` + `ErrorBoundary` + `Suspense`.
@@ -113,8 +115,9 @@ src/
 
 ## Known Limitations (do not expand scope to fix)
 
-- `grossProfit()` in financial reports filters `status IN (ISSUED, PAID)`, excluding `PARTIALLY_PAID` invoices.
 - `supplierPerformance()` falls back to `supplier.leadTimeDays` when no receipt history exists.
+- Gross profit reduces revenue by credit notes but does NOT reverse the COGS of returned goods. A fully credited sale therefore reads as revenue 0 against its original COGS. Whether a return should reverse COGS, and at what cost basis, is an open accounting decision — do not guess at it.
+- Executive COGS aggregates every `direction: OUT` ledger entry with a unit cost, which includes transfers, adjustments and damage as well as sales. This matches the existing `cogs()` report, so the two agree; narrowing it to `movementType: SALE` is a separate decision.
 - The `backup-service.test.ts` tests fail on Windows due to tar path resolution (`Cannot connect to C:`). This is a pre-existing environment issue, not a code bug.
 
 ## Documentation

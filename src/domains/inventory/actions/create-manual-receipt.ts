@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { ManualReceiptService } from "../services/manual-receipt-service";
 import { manualReceiptSchema } from "../validation/manual-receipt-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function createManualReceipt(input: unknown) {
   const parsed = manualReceiptSchema.safeParse(input);
@@ -23,9 +22,7 @@ export async function createManualReceipt(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to receive inventory.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new ManualReceiptService().receive(context, parsed.data);
     revalidatePath("/inventory/receiving");

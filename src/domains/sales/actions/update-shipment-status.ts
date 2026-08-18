@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
@@ -28,9 +29,7 @@ export async function updateShipmentStatusAction(input: unknown) {
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
 
-    if (!new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]).has(context.role)) {
-      throw new BusinessError("You do not have permission to update shipments.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new ShipmentService().updateStatus(context, parsed.data.id, parsed.data.status);
 

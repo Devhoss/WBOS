@@ -10,12 +10,7 @@ datasource db {
 
 enum OrganizationRole {
   OWNER
-  ADMIN
   MANAGER
-  SALES
-  WAREHOUSE
-  FINANCE
-  VIEWER
 }
 
 enum CurrencyCode {

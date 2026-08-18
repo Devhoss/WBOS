@@ -4,7 +4,7 @@ import type { AttachmentType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { AttachmentService } from "@/domains/attachments/services/attachment-service";
-import { requireMinimumRole } from "@/infrastructure/authorization/rbac";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -54,7 +54,7 @@ export async function uploadAttachmentAction(formData: FormData) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    requireMinimumRole(context, "MANAGER");
+    requireManager(context);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await new AttachmentService().upload(context, {

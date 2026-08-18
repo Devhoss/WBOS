@@ -1,12 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
 import { ReturnOrderService } from "../services/return-order-service";
 import { completeReturnSchema } from "../validation/return-order-schema";
-
-const allowedRoles = new Set(["OWNER", "ADMIN", "MANAGER", "WAREHOUSE"]);
 
 export async function completeReturnAction(input: unknown) {
   const parsed = completeReturnSchema.safeParse(input);
@@ -16,9 +15,7 @@ export async function completeReturnAction(input: unknown) {
 
   try {
     const context = await new AuthenticatedRequestContextService().getCurrentContext();
-    if (!allowedRoles.has(context.role)) {
-      throw new BusinessError("You do not have permission to complete returns.", "FORBIDDEN");
-    }
+    requireManager(context);
 
     await new ReturnOrderService().complete(context, parsed.data);
     revalidatePath("/returns");
