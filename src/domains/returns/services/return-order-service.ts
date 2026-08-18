@@ -345,8 +345,12 @@ export class ReturnOrderService {
             {
               organizationId: context.organizationId,
               type: "CUSTOMER_RETURN",
-              referenceType: "ReturnOrder",
-              referenceId: input.id,
+              // The exact return LINE, not the return order. A return can carry
+              // the same product twice -- the standing NORMAL + FREE_SAMPLE
+              // pattern -- and only the line knows which invoice line it came
+              // from. Referencing the order would collapse them.
+              referenceType: "ReturnOrderLine",
+              referenceId: orderLine.id,
               occurredAt: now,
               createdById: context.userId,
               notes: `Restock from return ${returnOrder.returnNumber}`,
@@ -403,11 +407,36 @@ export class ReturnOrderService {
       }
 
       if (line.disposition === "SCRAP") {
+        /**
+         * Scrapped goods come back and are immediately destroyed.
+         *
+         * Both legs are now stamped with the SAME original issue cost the
+         * restock path uses, which is what lets the reports tell the two
+         * stories apart: the CUSTOMER_RETURN / IN takes the cost back out of
+         * COGS (the sale was reversed), and the DAMAGE / OUT records it as an
+         * inventory write-off (the goods were lost, not sold). The net effect
+         * on profit is the same as before; the classification is not.
+         *
+         * The costing service is deliberately NOT called on either leg. Net
+         * quantity is zero, so `ProductCost` must not move -- and calling
+         * recordReceipt at the original cost followed by recordIssue at the
+         * recomputed average would remove a different amount than it added,
+         * leaving the weighted average permanently distorted.
+         */
+        const scrapUnitCost = await this.resolveRestockUnitCost(
+          context.organizationId,
+          returnOrder,
+          orderLine.productId,
+          input.warehouseId,
+          orderLine.receivedQuantity,
+        );
+        const scrapTotalCost = new Prisma.Decimal(Number(orderLine.receivedQuantity)).mul(scrapUnitCost);
+
         await this.inventory.post({
           organizationId: context.organizationId,
           type: "CUSTOMER_RETURN",
-          referenceType: "ReturnOrder",
-          referenceId: input.id,
+          referenceType: "ReturnOrderLine",
+          referenceId: orderLine.id,
           occurredAt: now,
           createdById: context.userId,
           notes: `Scrap from return ${returnOrder.returnNumber}`,
@@ -415,12 +444,16 @@ export class ReturnOrderService {
             productId: orderLine.productId,
             unitOfMeasureId: orderLine.unitOfMeasureId,
             quantity: orderLine.receivedQuantity,
+            unitCost: scrapUnitCost,
+            totalCost: scrapTotalCost,
             toWarehouseId: input.warehouseId,
             ledgerEntries: [{
               warehouseId: input.warehouseId,
               movementType: "CUSTOMER_RETURN",
               direction: "IN",
               quantity: orderLine.receivedQuantity,
+              unitCost: scrapUnitCost,
+              totalCost: scrapTotalCost,
             }],
           }],
         });
@@ -428,8 +461,8 @@ export class ReturnOrderService {
         await this.inventory.post({
           organizationId: context.organizationId,
           type: "DAMAGE",
-          referenceType: "ReturnOrder",
-          referenceId: input.id,
+          referenceType: "ReturnOrderLine",
+          referenceId: orderLine.id,
           occurredAt: now,
           createdById: context.userId,
           notes: `Scrap disposal from return ${returnOrder.returnNumber}`,
@@ -437,12 +470,16 @@ export class ReturnOrderService {
             productId: orderLine.productId,
             unitOfMeasureId: orderLine.unitOfMeasureId,
             quantity: orderLine.receivedQuantity,
+            unitCost: scrapUnitCost,
+            totalCost: scrapTotalCost,
             fromWarehouseId: input.warehouseId,
             ledgerEntries: [{
               warehouseId: input.warehouseId,
               movementType: "DAMAGE",
               direction: "OUT",
               quantity: orderLine.receivedQuantity,
+              unitCost: scrapUnitCost,
+              totalCost: scrapTotalCost,
             }],
           }],
         });

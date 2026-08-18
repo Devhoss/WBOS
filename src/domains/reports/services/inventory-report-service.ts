@@ -5,6 +5,14 @@ import {
   REVENUE_INVOICE_STATUSES,
   REVENUE_REDUCING_CREDIT_NOTE_STATUSES,
 } from "../revenue-recognition";
+import {
+  CLASSIFICATION_LABELS,
+  classifyLedgerEntry,
+  cogsImpact,
+  cogsLedgerWhere,
+  writeOffLedgerWhere,
+  type LedgerClassification,
+} from "../cogs-classification";
 import { InventoryValuationService, type InventoryValuationRow } from "@/domains/inventory/services/inventory-valuation-service";
 import { BaseReportRepository, type ReportDateRange } from "../repositories/base-report-repository";
 
@@ -91,6 +99,21 @@ type ProductCostHistoryRow = {
 };
 
 type CogsRow = {
+  occurredAt: Date;
+  documentNumber: string | null;
+  movementType: string;
+  classification: string;
+  productName: string;
+  productSku: string;
+  warehouseName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  /** Signed contribution to COGS: positive for a sale, negative for a return. */
+  costImpact: number;
+};
+
+type WriteOffRow = {
   occurredAt: Date;
   documentNumber: string | null;
   movementType: string;
@@ -592,27 +615,78 @@ export class InventoryReportService extends BaseReportRepository {
     }));
   }
 
-  async cogs(filters: InventoryFilters): Promise<CogsRow[]> {
-    const organizationId = await this.resolveOrganizationId();
+  /** Shared filter fragment so every ledger-backed report scopes identically. */
+  private ledgerScope(filters: InventoryFilters) {
     const dateFilter = this.buildDateFilter(filters.dateRange);
     const whId = filters.warehouseId;
+    return {
+      unitCost: { not: null },
+      ...(whId && { warehouseId: whId }),
+      ...(dateFilter.gte || dateFilter.lte ? { occurredAt: { ...dateFilter } } : {}),
+      ...(filters.search && {
+        product: {
+          OR: [
+            { name: { contains: filters.search, mode: "insensitive" as const } },
+            { sku: { contains: filters.search, mode: "insensitive" as const } },
+          ],
+        },
+      }),
+    };
+  }
+
+  /**
+   * Cost of goods sold.
+   *
+   * This used to list EVERY costed outbound movement, which meant internal
+   * warehouse transfers, cycle-count shrinkage and damaged stock all appeared
+   * as cost of sales. It now uses the same canonical classification as the
+   * gross-profit report and the executive panel, so the three cannot drift:
+   * sales count, customer returns count against them, write-offs and transfers
+   * appear on neither.
+   */
+  async cogs(filters: InventoryFilters): Promise<CogsRow[]> {
+    const organizationId = await this.resolveOrganizationId();
 
     const entries = await prisma.inventoryLedgerEntry.findMany({
-      where: {
-        organizationId,
-        direction: "OUT",
-        unitCost: { not: null },
-        ...(whId && { warehouseId: whId }),
-        ...(dateFilter.gte || dateFilter.lte ? { occurredAt: { ...dateFilter } } : {}),
-        ...(filters.search && {
-          product: {
-            OR: [
-              { name: { contains: filters.search, mode: "insensitive" } },
-              { sku: { contains: filters.search, mode: "insensitive" } },
-            ],
-          },
-        }),
+      where: { organizationId, ...this.ledgerScope(filters), ...cogsLedgerWhere },
+      include: {
+        product: { select: { name: true, sku: true } },
+        warehouse: { select: { name: true } },
+        transaction: { select: { documentNumber: true } },
       },
+      orderBy: { occurredAt: "desc" },
+    });
+
+    return entries.map((e) => {
+      const classification: LedgerClassification = classifyLedgerEntry(e.movementType, e.direction);
+      const totalCost = this.toNumber(e.totalCost);
+      return {
+        occurredAt: e.occurredAt,
+        documentNumber: e.transaction.documentNumber,
+        movementType: e.movementType,
+        classification: CLASSIFICATION_LABELS[classification],
+        productName: e.product.name,
+        productSku: e.product.sku,
+        warehouseName: e.warehouse.name,
+        quantity: this.toNumber(e.quantity),
+        unitCost: this.toNumber(e.unitCost),
+        totalCost,
+        costImpact: cogsImpact(classification, totalCost),
+      };
+    });
+  }
+
+  /**
+   * Inventory written off: damaged, expired, or lost to a cycle count.
+   *
+   * A real cost, but not the cost of anything sold, so it is reported here
+   * rather than inside gross profit.
+   */
+  async writeOffs(filters: InventoryFilters): Promise<WriteOffRow[]> {
+    const organizationId = await this.resolveOrganizationId();
+
+    const entries = await prisma.inventoryLedgerEntry.findMany({
+      where: { organizationId, ...this.ledgerScope(filters), ...writeOffLedgerWhere },
       include: {
         product: { select: { name: true, sku: true } },
         warehouse: { select: { name: true } },
@@ -747,6 +821,65 @@ export class InventoryReportService extends BaseReportRepository {
 
     const costByTxLine = new Map(ledgerEntries.map((le) => [le.transactionLineId, this.toNumber(le.totalCost)]));
 
+    /**
+     * Cost taken back out of COGS by customer returns, per invoice line.
+     *
+     * Return postings reference the exact ReturnOrderLine, and that line knows
+     * which invoice line it came from — so a return against a paid line is
+     * never attributed to a duplicate FREE_SAMPLE line for the same product.
+     *
+     * Both dispositions land here. A restock returns the goods to sellable
+     * stock; a scrap does not, but in both cases the original sale's cost has
+     * stopped being the cost of a completed sale. For a scrap the same amount
+     * reappears as a write-off, which is reported separately.
+     */
+    const returnLines = await prisma.returnOrderLine.findMany({
+      where: {
+        organizationId,
+        invoiceLineId: { in: invoiceLines.map((il) => il.id) },
+      },
+      select: { id: true, invoiceLineId: true },
+    });
+
+    const returnedCostByInvoiceLine = new Map<string, number>();
+
+    if (returnLines.length > 0) {
+      const returnCredits = await prisma.inventoryLedgerEntry.groupBy({
+        by: ["transactionId"],
+        where: {
+          organizationId,
+          direction: "IN",
+          movementType: "CUSTOMER_RETURN",
+          transaction: {
+            referenceType: "ReturnOrderLine",
+            referenceId: { in: returnLines.map((rl) => rl.id) },
+          },
+        },
+        _sum: { totalCost: true },
+      });
+
+      if (returnCredits.length > 0) {
+        const transactions = await prisma.inventoryTransaction.findMany({
+          where: { id: { in: returnCredits.map((rc) => rc.transactionId) } },
+          select: { id: true, referenceId: true },
+        });
+        const returnLineByTransaction = new Map(transactions.map((t) => [t.id, t.referenceId]));
+        const invoiceLineByReturnLine = new Map(
+          returnLines.map((rl) => [rl.id, rl.invoiceLineId] as const),
+        );
+
+        for (const credit of returnCredits) {
+          const returnLineId = returnLineByTransaction.get(credit.transactionId);
+          const invoiceLineId = returnLineId ? invoiceLineByReturnLine.get(returnLineId) : null;
+          if (!invoiceLineId) continue;
+          returnedCostByInvoiceLine.set(
+            invoiceLineId,
+            (returnedCostByInvoiceLine.get(invoiceLineId) ?? 0) + this.toNumber(credit._sum.totalCost),
+          );
+        }
+      }
+    }
+
     const invoiceMap = new Map(invoices.map((inv) => [inv.id, inv]));
     const rows: GrossProfitRow[] = [];
 
@@ -773,6 +906,9 @@ export class InventoryReportService extends BaseReportRepository {
           }
         }
       }
+
+      // Returned goods stop being the cost of a completed sale.
+      cogs -= returnedCostByInvoiceLine.get(il.id) ?? 0;
 
       const grossProfit = revenue - cogs;
       const marginPercent = revenue > 0 ? Math.round((grossProfit / revenue) * 10000) / 100 : 0;

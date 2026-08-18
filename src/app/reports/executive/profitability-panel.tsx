@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TrendingUp, DollarSign, Receipt } from "lucide-react";
+import { TrendingUp, DollarSign, Receipt, PackageX } from "lucide-react";
 import { TrendChart, TopItemsChart } from "@/app/simple-bar-chart";
 import { cn } from "@/lib/utils";
 import type { ProfitabilitySummary } from "./executive-service";
@@ -8,7 +8,8 @@ const money = (v: number) =>
   v.toLocaleString("en-KW", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
 export function ProfitabilityPanel({ data }: { data: ProfitabilitySummary }) {
-  const { totalRevenue, totalCogs, grossProfit, grossMarginPercent, revenueTrend, topProducts } = data;
+  const { totalRevenue, totalCogs, totalWriteOffs, grossProfit, grossMarginPercent, revenueTrend, topProducts } =
+    data;
 
   const marginColor =
     grossMarginPercent >= 25
@@ -30,7 +31,7 @@ export function ProfitabilityPanel({ data }: { data: ProfitabilitySummary }) {
       </div>
 
       {/* KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border bg-background p-4 sm:p-5">
           <div className="flex items-center justify-between">
             <div className="flex size-10 items-center justify-center rounded-md bg-primary/10">
@@ -64,6 +65,29 @@ export function ProfitabilityPanel({ data }: { data: ProfitabilitySummary }) {
           <p className={cn("mt-0.5 text-xs font-medium tabular-nums", marginColor)}>
             {grossMarginPercent.toFixed(1)}% margin
           </p>
+        </div>
+
+        {/*
+          Inventory losses sit beside gross profit, never inside it. Damaged,
+          expired and cycle-count shrinkage used to be counted as cost of goods
+          sold, which quietly blamed the margin for stock that was never sold.
+        */}
+        <div className="rounded-lg border bg-background p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex size-10 items-center justify-center rounded-md bg-muted">
+              <PackageX className="size-5 text-muted-foreground" />
+            </div>
+          </div>
+          <p
+            className={cn(
+              "mt-4 text-2xl font-semibold tracking-tight tabular-nums",
+              totalWriteOffs > 0 && "text-amber-600 dark:text-amber-400",
+            )}
+          >
+            {money(totalWriteOffs)}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Inventory Write-offs (KWD)</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Damaged, expired or lost — not COGS</p>
         </div>
       </div>
 

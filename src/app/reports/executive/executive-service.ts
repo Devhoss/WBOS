@@ -5,6 +5,10 @@ import {
   REVENUE_INVOICE_STATUSES,
   REVENUE_REDUCING_CREDIT_NOTE_STATUSES,
 } from "@/domains/reports/revenue-recognition";
+import {
+  cogsLedgerWhere,
+  writeOffLedgerWhere,
+} from "@/domains/reports/cogs-classification";
 import { InventoryValuationService } from "@/domains/inventory/services/inventory-valuation-service";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -15,6 +19,8 @@ export type TopItem = { name: string; value: number };
 export type ProfitabilitySummary = {
   totalRevenue: number;
   totalCogs: number;
+  /** Inventory losses — damaged, expired, or lost to a cycle count. Not COGS. */
+  totalWriteOffs: number;
   grossProfit: number;
   grossMarginPercent: number;
   revenueTrend: TrendPoint[];
@@ -118,7 +124,7 @@ export class ExecutiveService {
     const monthStart = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth(), 1);
 
     // Revenue COGS via inventory ledger (same filter as InventoryReportService.cogs)
-    const [revenueResult, creditResult, cogsResult, trendRows, topProductRows] = await Promise.all([
+    const [revenueResult, creditResult, cogsRows, writeOffResult, trendRows, topProductRows] = await Promise.all([
       prisma.invoice.aggregate({
         where: {
           organizationId,
@@ -135,12 +141,16 @@ export class ExecutiveService {
         },
         _sum: { totalAmount: true },
       }),
+      // Sales out, customer returns back in. The previous filter took EVERY
+      // costed outbound entry, so internal transfers, cycle-count shrinkage and
+      // damaged stock were all reported as cost of goods sold.
+      prisma.inventoryLedgerEntry.groupBy({
+        by: ["direction"],
+        where: { organizationId, unitCost: { not: null }, ...cogsLedgerWhere },
+        _sum: { totalCost: true },
+      }),
       prisma.inventoryLedgerEntry.aggregate({
-        where: {
-          organizationId,
-          direction: "OUT",
-          unitCost: { not: null },
-        },
+        where: { organizationId, unitCost: { not: null }, ...writeOffLedgerWhere },
         _sum: { totalCost: true },
       }),
       prisma.$queryRaw<{ month: Date; total: unknown }[]>`
@@ -168,7 +178,15 @@ export class ExecutiveService {
     // dropped from the report entirely.
     const totalRevenue =
       Number(revenueResult._sum.totalAmount ?? 0) - Number(creditResult._sum.totalAmount ?? 0);
-    const totalCogs = Number(cogsResult._sum.totalCost ?? 0);
+    // OUT is cost of sales; IN is the customer-return reversal of it.
+    const sold = cogsRows.find((r) => r.direction === "OUT");
+    const returned = cogsRows.find((r) => r.direction === "IN");
+    const totalCogs =
+      Number(sold?._sum.totalCost ?? 0) - Number(returned?._sum.totalCost ?? 0);
+
+    // Inventory losses. A real cost, but not the cost of anything sold, so it
+    // is reported alongside gross profit rather than inside it.
+    const totalWriteOffs = Number(writeOffResult._sum.totalCost ?? 0);
     const grossProfit = totalRevenue - totalCogs;
     const grossMarginPercent = totalRevenue > 0
       ? Math.round((grossProfit / totalRevenue) * 10000) / 100
@@ -202,7 +220,15 @@ export class ExecutiveService {
       value: Number(item._sum.totalPrice ?? 0),
     }));
 
-    return { totalRevenue, totalCogs, grossProfit, grossMarginPercent, revenueTrend, topProducts };
+    return {
+      totalRevenue,
+      totalCogs,
+      totalWriteOffs,
+      grossProfit,
+      grossMarginPercent,
+      revenueTrend,
+      topProducts,
+    };
   }
 
   /* ── Panel 2: Receivables ─────────────────────────────────────────────── */
