@@ -1,5 +1,8 @@
-import type { CreditNoteStatus } from "@prisma/client";
+import type { CreditNoteStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
+
+/** Either the shared client or an open transaction. */
+type Db = Prisma.TransactionClient | typeof prisma;
 
 export class CreditNoteRepository {
   async create(
@@ -7,6 +10,15 @@ export class CreditNoteRepository {
     creditNoteNumber: string,
     createdById: string,
     input: {
+      /**
+       * The authoritative credit total, derived by the caller from the lines
+       * and already applied to the invoice. Passed in rather than recomputed
+       * here so the amount added to `Invoice.creditedAmount` and the amount
+       * stored on the credit note cannot drift apart.
+       */
+      totalAmount: number;
+      status?: CreditNoteStatus;
+      issuedAt?: Date;
       invoiceId: string;
       returnOrderId?: string;
       customerId: string;
@@ -25,15 +37,18 @@ export class CreditNoteRepository {
         unitOfMeasureCode: string;
       }>;
     },
+    db: Db = prisma,
   ) {
-    return prisma.creditNote.create({
+    return db.creditNote.create({
       data: {
         organizationId,
         creditNoteNumber,
         invoiceId: input.invoiceId,
         returnOrderId: input.returnOrderId,
         customerId: input.customerId,
-        totalAmount: input.lines.reduce((sum, l) => sum + l.totalPrice, 0),
+        totalAmount: input.totalAmount,
+        status: input.status ?? "DRAFT",
+        issuedAt: input.issuedAt ?? null,
         reason: input.reason,
         createdById,
         lines: {
@@ -98,8 +113,9 @@ export class CreditNoteRepository {
     id: string,
     status: string,
     extra?: Record<string, unknown>,
+    db: Db = prisma,
   ) {
-    return prisma.creditNote.updateMany({
+    return db.creditNote.updateMany({
       where: { id, organizationId },
       data: { status: status as CreditNoteStatus, ...extra },
     });

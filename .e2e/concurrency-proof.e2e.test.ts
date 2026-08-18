@@ -45,11 +45,40 @@ let productId: string;
 let uomId: string;
 
 beforeAll(async () => {
-  const wh = await prisma.warehouse.findFirstOrThrow({ where: { organizationId: ORG } });
-  const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
-  warehouseId = wh.id;
-  productId = prod.id;
-  uomId = prod.unitOfMeasureId;
+  // A product and warehouse belonging to this file alone.
+  //
+  // These tests previously grabbed the first seeded product and warehouse and
+  // posted stock into them, which mutated shared demo data with no cleanup. On
+  // a persistent database that leaks into later runs, and it broke
+  // valuation-sync-e2e, which asserts the organization's ABSOLUTE inventory
+  // value. Dedicated fixtures keep every quantity assertion here self-contained.
+  //
+  // Everything is posted at zero cost, so the organization's inventory VALUE is
+  // unchanged no matter how many times this file runs.
+  const tag = Math.random().toString(36).slice(2, 8);
+  const seedProduct = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
+  const category = await prisma.category.findFirst({ where: { organizationId: ORG } });
+
+  const product = await prisma.product.create({
+    data: {
+      organizationId: ORG,
+      sku: `RACEFIX-${tag}`,
+      name: `Race Fixture Product ${tag}`,
+      unitOfMeasureId: seedProduct.unitOfMeasureId,
+      categoryId: category?.id ?? null,
+      // Goods receipt refuses a product that is not ACTIVE, and the model
+      // defaults to DRAFT.
+      status: "ACTIVE",
+    },
+  });
+
+  const warehouse = await prisma.warehouse.create({
+    data: { organizationId: ORG, code: `RCF-${tag}`.slice(0, 20), name: `Race Fixture WH ${tag}` },
+  });
+
+  warehouseId = warehouse.id;
+  productId = product.id;
+  uomId = seedProduct.unitOfMeasureId;
 });
 
 /** Build an isolated shipment + backing sales order for one test. */
@@ -140,7 +169,11 @@ describe("LIVE race conditions", () => {
       createdById: ctx.userId,
       lines: [{
         productId, unitOfMeasureId: uomId, quantity: 50, toWarehouseId: warehouseId,
-        ledgerEntries: [{ warehouseId, movementType: "ADJUSTMENT_IN", direction: "IN", quantity: 50 }],
+        unitCost: 0, totalCost: 0,
+        ledgerEntries: [{
+          warehouseId, movementType: "ADJUSTMENT_IN", direction: "IN", quantity: 50,
+          unitCost: 0, totalCost: 0,
+        }],
       }],
     });
 
@@ -193,11 +226,20 @@ describe("LIVE race conditions", () => {
       lines: [{ purchaseOrderLineId: poLine.id, productId: poLine.productId, quantity: remaining }],
     } as never;
 
-    await Promise.allSettled([svc.receive(ctx, payload), svc.receive(ctx, payload)]);
+    const results = await Promise.allSettled([svc.receive(ctx, payload), svc.receive(ctx, payload)]);
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
 
     const after = await prisma.purchaseOrderLine.findFirstOrThrow({ where: { id: poLine.id } });
     const received = Number(after.receivedQuantity);
-    console.log(`   [#3d] receivedQuantity=${received} (ordered ${Number(after.orderedQuantity)})`);
+    console.log(
+      `   [#3d] succeeded=${succeeded}/2 receivedQuantity=${received} (ordered ${Number(after.orderedQuantity)})`,
+    );
+
+    // The ceiling is the point of the test, but assert the receipt actually
+    // happened too: if both attempts failed for an unrelated reason the
+    // "<= ordered" assertion would pass while proving nothing.
+    expect(succeeded).toBe(1);
+    expect(received).toBe(Number(after.orderedQuantity));
     expect(received).toBeLessThanOrEqual(Number(after.orderedQuantity));
   });
 

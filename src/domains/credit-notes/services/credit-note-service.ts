@@ -4,6 +4,7 @@ import { BusinessError } from "@/shared/errors/business-error";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { CreditNoteRepository } from "../repositories/credit-note-repository";
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
+import { calculateDocumentTotals } from "@/shared/money/document-totals";
 import type { IssueCreditNoteInput } from "../validation/credit-note-schema";
 
 export class CreditNoteService {
@@ -13,6 +14,38 @@ export class CreditNoteService {
 
   async issue(context: { organizationId: string; userId: string }, input: IssueCreditNoteInput) {
     const now = new Date();
+
+    // The credit total is derived from the lines, never taken from the caller,
+    // and the SAME figure is both applied to the invoice and stored on the
+    // credit note -- so the two can never drift apart.
+    const totals = calculateDocumentTotals({
+      lines: input.lines.map((line) => ({
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+      })),
+    });
+    const creditTotal = new Prisma.Decimal(totals.totalAmount.toFixed(3));
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: input.invoiceId, organizationId: context.organizationId },
+      select: { id: true, invoiceNumber: true, totalAmount: true, creditedAmount: true },
+    });
+
+    if (!invoice) {
+      throw new BusinessError("Invoice was not found.", "INVOICE_NOT_FOUND");
+    }
+
+    // Fast, friendly rejection for the ordinary case. This is NOT the
+    // concurrency guard -- the conditional UPDATE below is.
+    const remaining = new Prisma.Decimal(invoice.totalAmount).minus(invoice.creditedAmount);
+    if (creditTotal.greaterThan(remaining)) {
+      throw new BusinessError(
+        `This credit note is for ${creditTotal.toFixed(3)} but only ${remaining.toFixed(3)} ` +
+          `of invoice ${invoice.invoiceNumber} remains uncredited.`,
+        "CREDIT_NOTE_EXCEEDS_INVOICE",
+      );
+    }
+
     const { documentNumber } = await this.docs.generate({
       organizationId: context.organizationId,
       documentType: "CN",
@@ -26,20 +59,73 @@ export class CreditNoteService {
     });
     const arabicNameMap = new Map(products.map((p) => [p.id, p.arabicName]));
 
-    const creditNote = await this.repo.create(context.organizationId, documentNumber, context.userId, {
-      ...input,
-      lines: input.lines.map((line, index) => ({
-        ...line,
-        productArabicName: arabicNameMap.get(line.productId) ?? null,
-        lineNumber: index + 1,
-      })),
-    });
+    const creditNote = await prisma.$transaction(async (tx) => {
+      // Claim the credit against the invoice FIRST, atomically. The ceiling
+      // lives in the WHERE clause, so a concurrent issuance cannot squeeze past
+      // it and no contribution can be lost to a stale read. Replaces a
+      // re-aggregate-then-unconditional-write that had no ceiling at all.
+      const applied = await tx.$executeRaw`
+        UPDATE "invoices"
+           SET "creditedAmount" = "creditedAmount" + ${creditTotal}
+         WHERE "id" = ${input.invoiceId}
+           AND "organizationId" = ${context.organizationId}
+           AND "creditedAmount" + ${creditTotal} <= "totalAmount"
+      `;
 
-    await this.repo.updateStatus(context.organizationId, creditNote.id, "ISSUED", {
-      issuedAt: now,
-    });
+      if (Number(applied) !== 1) {
+        const current = await tx.invoice.findFirst({
+          where: { id: input.invoiceId, organizationId: context.organizationId },
+          select: { totalAmount: true, creditedAmount: true },
+        });
+        const left = current
+          ? new Prisma.Decimal(current.totalAmount).minus(current.creditedAmount).toFixed(3)
+          : "0.000";
+        throw new BusinessError(
+          `This credit note is for ${creditTotal.toFixed(3)} but only ${left} of invoice ` +
+            `${invoice.invoiceNumber} remains uncredited.`,
+          "CREDIT_NOTE_EXCEEDS_INVOICE",
+        );
+      }
 
-    await this.updateInvoiceCreditedAmount(context.organizationId, input.invoiceId);
+      // Created ISSUED in the same transaction: a credit note can never exist
+      // without the matching invoice movement, and a refused claim leaves
+      // nothing behind.
+      const created = await this.repo.create(
+        context.organizationId,
+        documentNumber,
+        context.userId,
+        {
+          ...input,
+          totalAmount: creditTotal.toNumber(),
+          status: "ISSUED",
+          issuedAt: now,
+          lines: input.lines.map((line, index) => ({
+            ...line,
+            unitPrice: totals.lines[index].unitPrice.toNumber(),
+            totalPrice: totals.lines[index].totalPrice.toNumber(),
+            productArabicName: arabicNameMap.get(line.productId) ?? null,
+            lineNumber: index + 1,
+          })),
+        },
+        tx,
+      );
+
+      // Status is derived from the post-increment authoritative figure, not
+      // from the value this request happened to compute.
+      const settled = await tx.invoice.findFirstOrThrow({
+        where: { id: input.invoiceId, organizationId: context.organizationId },
+        select: { creditedAmount: true, totalAmount: true },
+      });
+
+      if (new Prisma.Decimal(settled.creditedAmount).greaterThanOrEqualTo(settled.totalAmount)) {
+        await tx.invoice.updateMany({
+          where: { id: input.invoiceId, organizationId: context.organizationId },
+          data: { status: "CREDITED" },
+        });
+      }
+
+      return created;
+    });
 
     await this.logs.create({
       organizationId: context.organizationId,
@@ -92,31 +178,6 @@ export class CreditNoteService {
     return this.repo.findById(context.organizationId, creditNote.id);
   }
 
-  private async updateInvoiceCreditedAmount(organizationId: string, invoiceId: string) {
-    const aggregates = await prisma.creditNote.aggregate({
-      where: {
-        organizationId,
-        invoiceId,
-        status: "ISSUED",
-      },
-      _sum: { totalAmount: true },
-    });
-
-    const creditedAmount = aggregates._sum.totalAmount ?? 0;
-
-    const invoice = await prisma.invoice.update({
-      where: { id: invoiceId, organizationId },
-      data: { creditedAmount },
-    });
-
-    if (creditedAmount >= invoice.totalAmount) {
-      await prisma.invoice.update({
-        where: { id: invoiceId, organizationId },
-        data: { status: "CREDITED" },
-      });
-    }
-  }
-
   async cancel(
     context: { organizationId: string; userId: string },
     id: string,
@@ -132,12 +193,38 @@ export class CreditNoteService {
       throw new BusinessError("Only issued credit notes can be cancelled.", "CREDIT_NOTE_INVALID_STATUS");
     }
 
-    await this.repo.updateStatus(context.organizationId, id, "CANCELLED", {
-      cancelledAt: new Date(),
-      cancelledReason: reason,
-    });
+    const released = new Prisma.Decimal(creditNote.totalAmount);
 
-    await this.updateInvoiceCreditedAmount(context.organizationId, creditNote.invoiceId);
+    await prisma.$transaction(async (tx) => {
+      // Claim the ISSUED -> CANCELLED transition conditionally, so two
+      // concurrent cancellations cannot both release the same amount.
+      const claimed = await tx.creditNote.updateMany({
+        where: { id, organizationId: context.organizationId, status: "ISSUED" },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelledReason: reason },
+      });
+
+      if (claimed.count !== 1) {
+        throw new BusinessError(
+          "Only issued credit notes can be cancelled.",
+          "CREDIT_NOTE_INVALID_STATUS",
+        );
+      }
+
+      const applied = await tx.$executeRaw`
+        UPDATE "invoices"
+           SET "creditedAmount" = "creditedAmount" - ${released}
+         WHERE "id" = ${creditNote.invoiceId}
+           AND "organizationId" = ${context.organizationId}
+           AND "creditedAmount" - ${released} >= 0
+      `;
+
+      if (Number(applied) !== 1) {
+        throw new BusinessError(
+          "Cancelling this credit note would drive the invoice credited amount below zero.",
+          "CREDIT_NOTE_RELEASE_UNDERFLOW",
+        );
+      }
+    });
 
     await this.logs.create({
       organizationId: context.organizationId,
