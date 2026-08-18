@@ -19,7 +19,28 @@ const salesOrderLineSchema = z.object({
   description: optionalText,
   notes: optionalText,
   lineType: z.enum(["NORMAL", "FREE_SAMPLE"]).default("NORMAL"),
-});
+})
+  /**
+   * A FREE_SAMPLE line is zero-priced by definition. Until now this was only
+   * enforced by the web form (which blanks the price inputs when the checkbox
+   * is ticked) and again at invoice generation. Any other caller — the mobile
+   * client, a script, a hand-rolled request — could persist a priced
+   * free-sample line, which then appeared on the sales order at full price but
+   * was silently zeroed on the invoice, so the invoice header no longer matched
+   * the sum of its own lines.
+   *
+   * Normalising here makes the rule hold at every entry point.
+   *
+   * NOTE: this deliberately does NOT recompute the order's subtotal/tax/total.
+   * Those remain client-supplied (audit finding H4) and are tracked separately;
+   * fixing them requires establishing the server-authoritative calculation,
+   * which is out of scope for this change.
+   */
+  .transform((line) =>
+    line.lineType === "FREE_SAMPLE"
+      ? { ...line, unitPrice: 0, totalPrice: 0 }
+      : line,
+  );
 
 export const createSalesOrderSchema = z.object({
   customerId: z.string().trim().min(1, "Customer is required."),

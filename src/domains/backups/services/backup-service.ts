@@ -230,11 +230,62 @@ export class BackupService {
     return { lastBackupAt, lastRestoreTest };
   }
 
+  /**
+   * Removes staging directories abandoned by a previous run.
+   *
+   * createBackup/restoreBackup/verifyPackage each clean up in a `finally`, but a
+   * `finally` cannot run if the process is killed mid-backup (OOM, SIGKILL,
+   * container eviction, a hard tar crash). A backup staging directory holds a
+   * full database dump plus every uploaded file, so a handful of orphans can
+   * fill the disk — and the disk filling up is exactly what stops the next
+   * backup from succeeding.
+   *
+   * Deliberately conservative: only this service's own prefixes are considered,
+   * and only entries older than `minAgeMs`, so a concurrently running backup is
+   * never touched. Failures are swallowed — a sweep must never be the reason a
+   * backup does not happen.
+   */
+  async sweepOrphanedStaging(minAgeMs = 6 * 60 * 60 * 1000): Promise<string[]> {
+    const prefixes = ["wbos-backup-", "wbos-restore-", "wbos-verify-"];
+    const removed: string[] = [];
+    const cutoff = Date.now() - minAgeMs;
+    const tmp = tmpdir();
+
+    let entries: string[];
+    try {
+      entries = await readdir(tmp);
+    } catch {
+      return removed;
+    }
+
+    for (const entry of entries) {
+      if (!prefixes.some((prefix) => entry.startsWith(prefix))) continue;
+      const full = join(tmp, entry);
+      try {
+        const info = await stat(full);
+        // Packages themselves are files (.tar.gz); staging dirs are directories.
+        if (!info.isDirectory()) continue;
+        if (info.mtimeMs > cutoff) continue;
+        await rm(full, { recursive: true, force: true });
+        removed.push(entry);
+      } catch {
+        // Busy, permission-denied, or already gone — leave it for the next run.
+      }
+    }
+
+    if (removed.length > 0) {
+      console.warn(`[backup] Reclaimed ${removed.length} orphaned staging director${removed.length === 1 ? "y" : "ies"}.`);
+    }
+
+    return removed;
+  }
+
   async createBackup(context: AuthenticatedRequestContext): Promise<BackupPackageMeta> {
     if (!this.databaseUrl) {
       throw new BusinessError("DATABASE_URL is not configured; cannot create a backup.", "BACKUP_DB_URL_MISSING");
     }
     await this.assertToolsAvailable(["pg_dump", "tar"]);
+    await this.sweepOrphanedStaging();
 
     const now = new Date();
     const timestamp = [

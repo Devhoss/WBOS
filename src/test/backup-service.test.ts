@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, utimes } from "node:fs/promises";
 import { existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -478,6 +478,60 @@ describe("BackupService", () => {
     expect(status.lastRestoreTest).not.toBeNull();
     expect(status.lastRestoreTest!.result).toBe("failed");
     expect(status.lastRestoreTest!.packageName).toBe(pkg.fileName);
+  });
+
+  it("reclaims staging directories orphaned by a crashed previous run", async () => {
+    // createBackup/restoreBackup/verifyPackage each clean up in a `finally`,
+    // but a `finally` never runs if the process is killed mid-backup. Each
+    // orphan holds a full database dump plus every uploaded file, so they fill
+    // the disk — and a full disk is what stops the next backup working.
+    const osTmp = tmpdir();
+    const orphan = join(osTmp, `wbos-backup-${Date.now()}-orphan-test`);
+    await mkdir(join(orphan, "wbos-backup-20260101_000000"), { recursive: true });
+    await writeFile(join(orphan, "wbos-backup-20260101_000000", "database.dump"), "PGDUMP");
+
+    // Age it past the safety window so a concurrently running backup is never
+    // mistaken for an orphan.
+    const old = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await utimes(orphan, old, old);
+
+    const removed = await service.sweepOrphanedStaging();
+
+    expect(removed).toContain(basename(orphan));
+    expect(existsSync(orphan)).toBe(false);
+  });
+
+  it("never removes a staging directory that is still recent", async () => {
+    // A backup running right now must not be deleted out from under itself.
+    const osTmp = tmpdir();
+    const active = join(osTmp, `wbos-backup-${Date.now()}-active-test`);
+    await mkdir(active, { recursive: true });
+
+    try {
+      const removed = await service.sweepOrphanedStaging();
+
+      expect(removed).not.toContain(basename(active));
+      expect(existsSync(active)).toBe(true);
+    } finally {
+      await rm(active, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores temp entries that are not this service's staging directories", async () => {
+    const osTmp = tmpdir();
+    const unrelated = join(osTmp, `unrelated-${Date.now()}-test`);
+    await mkdir(unrelated, { recursive: true });
+    const old = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await utimes(unrelated, old, old);
+
+    try {
+      const removed = await service.sweepOrphanedStaging();
+
+      expect(removed).not.toContain(basename(unrelated));
+      expect(existsSync(unrelated)).toBe(true);
+    } finally {
+      await rm(unrelated, { recursive: true, force: true });
+    }
   });
 
   it("staging directory is cleaned up after create", async () => {
