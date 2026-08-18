@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  enforceLineDocumentTotals,
+  QUOTATION_LINE_FIELDS,
+} from "@/shared/money/document-schema";
+
 const optionalText = z
   .string()
   .trim()
@@ -21,7 +26,7 @@ const quotationLineSchema = z.object({
   notes: optionalText,
 });
 
-export const createQuotationSchema = z.object({
+const createQuotationBaseSchema = z.object({
   customerId: z.string().trim().min(1, "Customer is required."),
   currency: z.enum(["KWD", "USD", "EUR"]).default("KWD"),
   subtotal: z.coerce.number().min(0, "Subtotal cannot be negative."),
@@ -36,9 +41,13 @@ export const createQuotationSchema = z.object({
   lines: z.array(quotationLineSchema).min(1, "At least one product line is required."),
 });
 
-export const updateQuotationSchema = createQuotationSchema.extend({
-  id: z.string().trim().min(1, "Quotation is required."),
-});
+export const createQuotationSchema = createQuotationBaseSchema.transform((value, ctx) =>
+  enforceLineDocumentTotals(value, ctx, QUOTATION_LINE_FIELDS),
+);
+
+export const updateQuotationSchema = createQuotationBaseSchema
+  .extend({ id: z.string().trim().min(1, "Quotation is required.") })
+  .transform((value, ctx) => enforceLineDocumentTotals(value, ctx, QUOTATION_LINE_FIELDS));
 
 export type CreateQuotationInput = z.infer<typeof createQuotationSchema>;
 export type UpdateQuotationInput = z.infer<typeof updateQuotationSchema>;

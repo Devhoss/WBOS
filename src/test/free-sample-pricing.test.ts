@@ -38,13 +38,24 @@ function baseLine(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Builds a header consistent with its own lines, the way a correct client does.
+ * The server now rejects a document whose header disagrees with its lines, so a
+ * fixture with hardcoded totals would fail for the wrong reason and hide what
+ * these tests are actually about.
+ */
 function order(lines: unknown[]) {
+  const subtotal = (lines as Array<Record<string, number | string>>).reduce((sum, line) => {
+    if (line.lineType === "FREE_SAMPLE") return sum;
+    return sum + Number(line.orderedQuantity) * Number(line.unitPrice);
+  }, 0);
+
   return {
     customerId: "cust-1",
     currency: "KWD",
-    subtotal: 30,
+    subtotal,
     taxAmount: 0,
-    totalAmount: 30,
+    totalAmount: subtotal,
     lines,
   };
 }

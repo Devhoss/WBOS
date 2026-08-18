@@ -1,12 +1,14 @@
 import { z } from "zod";
 
+import { enforceHeaderDocumentTotals } from "@/shared/money/document-schema";
+
 const optionalText = z
   .string()
   .trim()
   .transform((value) => (value.length > 0 ? value : undefined))
   .optional();
 
-export const createSupplierInvoiceSchema = z.object({
+const createSupplierInvoiceBaseSchema = z.object({
   supplierId: z.string().trim().min(1, "Supplier is required."),
   currency: z.enum(["KWD", "USD", "EUR"]).default("KWD"),
   subtotal: z.coerce.number().min(0, "Subtotal cannot be negative."),
@@ -17,9 +19,18 @@ export const createSupplierInvoiceSchema = z.object({
   notes: optionalText,
 });
 
-export const updateSupplierInvoiceSchema = createSupplierInvoiceSchema.extend({
-  id: z.string().trim().min(1, "Supplier invoice is required."),
-});
+/**
+ * A supplier invoice has no lines: the operator types the subtotal straight off
+ * the supplier's paper invoice, so the subtotal is a genuine input. Only the
+ * total is derived.
+ */
+export const createSupplierInvoiceSchema = createSupplierInvoiceBaseSchema.transform(
+  (value, ctx) => enforceHeaderDocumentTotals(value, ctx),
+);
+
+export const updateSupplierInvoiceSchema = createSupplierInvoiceBaseSchema
+  .extend({ id: z.string().trim().min(1, "Supplier invoice is required.") })
+  .transform((value, ctx) => enforceHeaderDocumentTotals(value, ctx));
 
 export const supplierInvoiceIdSchema = z.object({
   id: z.string().trim().min(1, "Supplier invoice is required."),

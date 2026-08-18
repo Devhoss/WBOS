@@ -5,6 +5,7 @@ import { DocumentNumberService } from "@/domains/documents/services/document-num
 import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
+import { calculateDocumentTotals } from "@/shared/money/document-totals";
 
 import { InvoiceRepository } from "../repositories/invoice-repository";
 import { SalesOrderRepository } from "../repositories/sales-order-repository";
@@ -67,28 +68,20 @@ export class InvoiceService {
 
     const customer = order.customer;
 
-    const discountAmount = new Prisma.Decimal(order.discountAmount);
-    const hasDiscount = discountAmount.gt(0);
-
-    const invoice = await this.invoices.create(context.organizationId, documentNumber, {
-      salesOrderId: order.id,
-      customerId: customer.id,
-      currency: order.currency,
-      subtotal: new Prisma.Decimal(order.subtotal),
-      taxAmount: new Prisma.Decimal(order.taxAmount),
-      totalAmount: new Prisma.Decimal(order.totalAmount),
-      discountAmount,
-      discountType: hasDiscount ? "FIXED" : null,
-      discountRate: hasDiscount ? discountAmount : null,
-      customerName: customer.name,
-      customerAddress: customer.address,
-      paymentTerms: order.notes ?? null,
-      dueDate: null,
-      notes: order.notes ?? null,
-      warehouseName,
-      deliveryStatus,
-      lines: await Promise.all(order.lines.map(async (line, index) => {
-        let piecesPerBox = line.piecesPerBox ? new Prisma.Decimal(line.piecesPerBox) : null;
+    // The invoice header is derived from the invoice's OWN lines, not copied
+    // from the order. The two used to be independent arithmetics — the header
+    // was copied verbatim while FREE_SAMPLE lines were separately zeroed — so
+    // any disagreement on the order propagated onto a printed invoice that then
+    // did not foot against the lines beneath it. Legacy orders written before
+    // the totals became server-authoritative can carry exactly such a
+    // disagreement (SO-2026-000002 stores 72.913 where its own figures give
+    // 72.912), and a newly generated invoice must not inherit it.
+    //
+    // Nothing is rejected here: an invoice is server-generated output, not
+    // client input. The order's tax and discount remain the authoritative
+    // inputs; only the derived money is recomputed.
+    const invoiceLines = await Promise.all(order.lines.map(async (line, index) => {
+      let piecesPerBox = line.piecesPerBox ? new Prisma.Decimal(line.piecesPerBox) : null;
 
         if (!piecesPerBox) {
           const product = await prisma.product.findFirst({
@@ -121,7 +114,45 @@ export class InvoiceService {
           piecesPerBox,
           description: line.description,
         };
+      }));
+
+    // Derived from the invoice's own lines, using the order's tax and discount
+    // as inputs. `calculateDocumentTotals` re-applies the free-sample rule, so
+    // the zeroing above and the header can never disagree.
+    const totals = calculateDocumentTotals({
+      lines: invoiceLines.map((l) => ({
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        lineType: l.lineType as "NORMAL" | "FREE_SAMPLE",
       })),
+      taxAmount: order.taxAmount,
+      // A percentage discount was already resolved to an amount on the order,
+      // so the invoice carries it as a FIXED amount — the existing behaviour.
+      discountType: Number(order.discountAmount) > 0 ? "FIXED" : null,
+      discountRate: order.discountAmount,
+    });
+
+    const discountAmount = new Prisma.Decimal(totals.discountAmount.toFixed(3));
+    const hasDiscount = discountAmount.gt(0);
+
+    const invoice = await this.invoices.create(context.organizationId, documentNumber, {
+      salesOrderId: order.id,
+      customerId: customer.id,
+      currency: order.currency,
+      subtotal: new Prisma.Decimal(totals.subtotal.toFixed(3)),
+      taxAmount: new Prisma.Decimal(totals.taxAmount.toFixed(3)),
+      totalAmount: new Prisma.Decimal(totals.totalAmount.toFixed(3)),
+      discountAmount,
+      discountType: hasDiscount ? "FIXED" : null,
+      discountRate: hasDiscount ? discountAmount : null,
+      customerName: customer.name,
+      customerAddress: customer.address,
+      paymentTerms: order.notes ?? null,
+      dueDate: null,
+      notes: order.notes ?? null,
+      warehouseName,
+      deliveryStatus,
+      lines: invoiceLines,
     });
 
     await this.orders.updateStatus(context.organizationId, order.id, "INVOICED");
@@ -137,7 +168,7 @@ export class InvoiceService {
         invoiceNumber: documentNumber,
         salesOrderId: order.id,
         soNumber: order.soNumber,
-        totalAmount: Number(order.totalAmount),
+        totalAmount: totals.totalAmount.toNumber(),
       },
     });
 
@@ -150,7 +181,7 @@ export class InvoiceService {
       summary: `Invoice ${documentNumber} was issued for this order.`,
       metadata: {
         invoiceNumber: documentNumber,
-        totalAmount: Number(order.totalAmount),
+        totalAmount: totals.totalAmount.toNumber(),
       },
     });
 

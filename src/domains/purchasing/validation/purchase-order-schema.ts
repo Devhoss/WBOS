@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  enforceLineDocumentTotals,
+  PURCHASE_LINE_FIELDS,
+} from "@/shared/money/document-schema";
+
 const optionalText = z
   .string()
   .trim()
@@ -16,7 +21,7 @@ const purchaseOrderLineSchema = z.object({
   notes: optionalText,
 });
 
-export const createPurchaseOrderSchema = z.object({
+const createPurchaseOrderBaseSchema = z.object({
   supplierId: z.string().trim().min(1, "Supplier is required."),
   currency: z.enum(["KWD", "USD", "EUR"]).default("KWD"),
   subtotal: z.coerce.number().min(0, "Subtotal cannot be negative."),
@@ -31,9 +36,13 @@ export const createPurchaseOrderSchema = z.object({
     .min(1, "At least one product line is required."),
 });
 
-export const updatePurchaseOrderSchema = createPurchaseOrderSchema.extend({
-  id: z.string().trim().min(1, "Purchase order is required."),
-});
+export const createPurchaseOrderSchema = createPurchaseOrderBaseSchema.transform((value, ctx) =>
+  enforceLineDocumentTotals(value, ctx, PURCHASE_LINE_FIELDS),
+);
+
+export const updatePurchaseOrderSchema = createPurchaseOrderBaseSchema
+  .extend({ id: z.string().trim().min(1, "Purchase order is required.") })
+  .transform((value, ctx) => enforceLineDocumentTotals(value, ctx, PURCHASE_LINE_FIELDS));
 
 export const updatePurchaseOrderStatusSchema = z.object({
   id: z.string().trim().min(1, "Purchase order is required."),

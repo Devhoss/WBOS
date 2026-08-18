@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { updateQuotationAction } from "@/domains/quotations/actions/update-quotation";
 import { uid } from "@/lib/uid";
+import { previewDocumentTotals } from "@/shared/money/document-totals";
 
 type ProductOption = { id: string; name: string; sku: string; barcode: string | null; defaultSellingPrice: number | null; piecesPerBox: number | null; unitOfMeasure: { id: string; name: string; code: string } };
 type CustomerOption = { id: string; name: string };
@@ -111,15 +112,26 @@ export function QuotationEditForm({
 
   async function submit() {
     setMessage(null);
-    const subtotal = lines.reduce((s, l) => s + (Number.parseFloat(l.totalPrice) || 0), 0);
-    const tax = Number.parseFloat(taxAmount) || 0;
-    let discountAmount = 0;
-    if (discountType === "FIXED" && discountRate) {
-      discountAmount = Number.parseFloat(discountRate) || 0;
-    } else if (discountType === "PERCENTAGE" && discountRate) {
-      discountAmount = subtotal * ((Number.parseFloat(discountRate) || 0) / 100);
+    // The same calculation the server runs. Sharing one implementation is what
+    // keeps the figures shown to the operator identical to the ones stored —
+    // the server rejects a submission whose totals disagree with its own.
+    const preview = previewDocumentTotals({
+      lines: lines.map((l) => ({
+        quantity: Number.parseFloat(l.quantity) || 0,
+        unitPrice: Number.parseFloat(l.unitPrice) || 0,
+        lineType: "NORMAL",
+      })),
+      taxAmount: Number.parseFloat(taxAmount) || 0,
+      discountType: discountType || null,
+      discountRate: discountRate ? Number.parseFloat(discountRate) || 0 : null,
+    });
+
+    if (!preview.ok) {
+      setMessage(preview.message);
+      return;
     }
-    const total = subtotal + tax - discountAmount;
+
+    const { subtotal, taxAmount: tax, discountAmount, totalAmount: total } = preview.totals;
 
     setIsPending(true);
     try {
@@ -128,7 +140,7 @@ export function QuotationEditForm({
         customerId,
         currency,
         subtotal: subtotal.toFixed(3),
-        taxAmount,
+        taxAmount: tax.toFixed(3),
         totalAmount: total.toFixed(3),
         discountAmount: discountAmount.toFixed(3),
         discountType: discountType || undefined,

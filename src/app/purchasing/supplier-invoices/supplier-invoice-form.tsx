@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { createSupplierInvoice } from "@/domains/supplier-invoices/actions/create-supplier-invoice";
 import { updateSupplierInvoice } from "@/domains/supplier-invoices/actions/update-supplier-invoice";
+import { calculateHeaderOnlyTotals } from "@/shared/money/document-totals";
 
 type SupplierOption = {
   id: string;
@@ -38,9 +39,15 @@ export function SupplierInvoiceForm({
 
   function handleSubmit(formData: FormData) {
     setMessage(null);
-    const subtotal = Number(String(formData.get("subtotal") ?? "0"));
-    const taxAmount = Number(String(formData.get("taxAmount") ?? "0"));
-    const totalAmount = subtotal + taxAmount;
+    // Derived by the shared calculator so the rounding matches the server's,
+    // which verifies this figure and rejects a mismatch.
+    const totals = calculateHeaderOnlyTotals({
+      subtotal: Number(String(formData.get("subtotal") ?? "0")),
+      taxAmount: Number(String(formData.get("taxAmount") ?? "0")),
+    });
+    const subtotal = totals.subtotal.toNumber();
+    const taxAmount = totals.taxAmount.toNumber();
+    const totalAmount = totals.totalAmount.toNumber();
 
     startTransition(async () => {
       const payload = {

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { updatePurchaseOrder } from "../../../../../domains/purchasing/actions/update-purchase-order";
 import { uid } from "@/lib/uid";
+import { previewDocumentTotals } from "@/shared/money/document-totals";
 
 type ProductOption = {
   id: string;
@@ -107,20 +108,30 @@ export function EditPurchaseOrderForm({
   function saveOrder() {
     setMessage(null);
 
-    startTransition(async () => {
-      const subtotal = lines.reduce((sum, line) => {
-        const tc = Number.parseFloat(line.totalCost);
-        return sum + (Number.isNaN(tc) ? 0 : tc);
-      }, 0);
-      const tax = Number.parseFloat(taxAmount) || 0;
-      const total = subtotal + tax;
+    // The same calculation the server runs, so the operator sees exactly the
+    // figures that will be stored.
+    const preview = previewDocumentTotals({
+      lines: lines.map((l) => ({
+        quantity: Number.parseFloat(l.orderedQuantity) || 0,
+        unitPrice: Number.parseFloat(l.unitCost) || 0,
+      })),
+      taxAmount: Number.parseFloat(taxAmount) || 0,
+    });
 
+    if (!preview.ok) {
+      setMessage(preview.message);
+      return;
+    }
+
+    const { subtotal, taxAmount: tax, totalAmount: total } = preview.totals;
+
+    startTransition(async () => {
       const result = await updatePurchaseOrder({
         id: order.id,
         supplierId,
         currency,
         subtotal: subtotal.toFixed(3),
-        taxAmount,
+        taxAmount: tax.toFixed(3),
         totalAmount: total.toFixed(3),
         expectedDeliveryDate: expectedDeliveryDate || undefined,
         deliveryAddress: deliveryAddress || undefined,

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { updateSalesOrderAction } from "../../../../../domains/sales/actions/update-sales-order";
 import { uid } from "@/lib/uid";
+import { previewDocumentTotals } from "@/shared/money/document-totals";
 
 type ProductOpt = { id: string; sku: string; name: string; defaultSellingPrice: number; unitOfMeasureId: string; unitOfMeasureCode: string };
 type CustomerOpt = { id: string; name: string; code: string | null };
@@ -73,19 +74,30 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
 
   async function saveOrder() {
     setMessage(null);
-    const subtotal = lines.reduce((s, l) => s + (Number.parseFloat(l.totalPrice) || 0), 0);
-    const tax = Number.parseFloat(taxAmount) || 0;
-    let discountAmount = 0;
-    if (discountType === "FIXED" && discountRate) {
-      discountAmount = Number.parseFloat(discountRate) || 0;
-    } else if (discountType === "PERCENTAGE" && discountRate) {
-      discountAmount = subtotal * ((Number.parseFloat(discountRate) || 0) / 100);
+    // The same calculation the server runs. Sharing one implementation is what
+    // keeps the figures shown to the operator identical to the ones stored —
+    // the server rejects a submission whose totals disagree with its own.
+    const preview = previewDocumentTotals({
+      lines: lines.map((l) => ({
+        quantity: Number.parseFloat(l.orderedQuantity) || 0,
+        unitPrice: Number.parseFloat(l.unitPrice) || 0,
+        lineType: l.freeSample ? "FREE_SAMPLE" : "NORMAL",
+      })),
+      taxAmount: Number.parseFloat(taxAmount) || 0,
+      discountType: discountType || null,
+      discountRate: discountRate ? Number.parseFloat(discountRate) || 0 : null,
+    });
+
+    if (!preview.ok) {
+      setMessage(preview.message);
+      return;
     }
-    const total = subtotal + tax - discountAmount;
+
+    const { subtotal, taxAmount: tax, discountAmount, totalAmount: total } = preview.totals;
     setIsPending(true);
     try {
       const result = await updateSalesOrderAction({
-        id: order.id, customerId, currency, subtotal: subtotal.toFixed(3), taxAmount,
+        id: order.id, customerId, currency, subtotal: subtotal.toFixed(3), taxAmount: tax.toFixed(3),
         totalAmount: total.toFixed(3),
         discountAmount: discountAmount.toFixed(3),
         discountType: discountType || undefined,
@@ -248,12 +260,21 @@ export function EditSalesOrderForm({ order, products, customers, units }: {
             <span>Total</span>
             <span className="font-mono tabular-nums">
               {(() => {
-                const sub = lines.reduce((s, l) => s + (Number.parseFloat(l.totalPrice) || 0), 0);
-                const tax = Number.parseFloat(taxAmount) || 0;
-                let disc = 0;
-                if (discountType === "FIXED" && discountRate) disc = Number.parseFloat(discountRate) || 0;
-                else if (discountType === "PERCENTAGE" && discountRate) disc = sub * ((Number.parseFloat(discountRate) || 0) / 100);
-                return (sub + tax - disc).toFixed(3);
+                // The displayed total must be the figure that will actually be
+                // stored, so it uses the same calculator as the submit path and
+                // the server. Recomputing it inline here is how the displayed
+                // and submitted totals drifted apart in the first place.
+                const preview = previewDocumentTotals({
+                  lines: lines.map((l) => ({
+                    quantity: Number.parseFloat(l.orderedQuantity) || 0,
+                    unitPrice: Number.parseFloat(l.unitPrice) || 0,
+                    lineType: l.freeSample ? "FREE_SAMPLE" : "NORMAL",
+                  })),
+                  taxAmount: Number.parseFloat(taxAmount) || 0,
+                  discountType: discountType || null,
+                  discountRate: discountRate ? Number.parseFloat(discountRate) || 0 : null,
+                });
+                return preview.ok ? preview.totals.totalAmount.toFixed(3) : "—";
               })()}
             </span>
           </div>

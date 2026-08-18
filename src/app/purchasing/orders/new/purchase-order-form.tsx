@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { createPurchaseOrder } from "../../../../domains/purchasing/actions/create-purchase-order";
 import { uid } from "@/lib/uid";
+import { previewDocumentTotals } from "@/shared/money/document-totals";
 
 type ProductOption = {
   id: string;
@@ -95,27 +96,46 @@ export function PurchaseOrderForm({
     setLines((current) => (current.length === 1 ? current : current.filter((line) => line.id !== id)));
   }
 
+  /** The same calculation the server runs, over the current line inputs. */
+  function computeTotals() {
+    return previewDocumentTotals({
+      lines: lines.map((l) => ({
+        quantity: Number.parseFloat(l.orderedQuantity) || 0,
+        unitPrice: Number.parseFloat(l.unitCost) || 0,
+      })),
+      taxAmount: Number.parseFloat(taxAmount) || 0,
+    });
+  }
+
   function recalcTotals() {
-    const sub = lines.reduce((sum, line) => {
-      const tc = Number.parseFloat(line.totalCost);
-      return sum + (Number.isNaN(tc) ? 0 : tc);
-    }, 0);
-    setSubtotal(sub.toFixed(3));
-    const tax = Number.parseFloat(taxAmount) || 0;
-    setTotalAmount((sub + tax).toFixed(3));
+    const preview = computeTotals();
+    if (!preview.ok) return;
+    setSubtotal(preview.totals.subtotal.toFixed(3));
+    setTotalAmount(preview.totals.totalAmount.toFixed(3));
   }
 
   function submitOrder() {
     setMessage(null);
-    recalcTotals();
+
+    // Computed here rather than read back from state: setState is async, so
+    // calling recalcTotals() and immediately reading `subtotal`/`totalAmount`
+    // submitted the PREVIOUS render's figures. The server now derives and
+    // verifies these, so stale values are rejected outright.
+    const preview = computeTotals();
+    if (!preview.ok) {
+      setMessage(preview.message);
+      return;
+    }
+    setSubtotal(preview.totals.subtotal.toFixed(3));
+    setTotalAmount(preview.totals.totalAmount.toFixed(3));
 
     startTransition(async () => {
       const result = await createPurchaseOrder({
         supplierId,
         currency,
-        subtotal,
-        taxAmount,
-        totalAmount,
+        subtotal: preview.totals.subtotal.toFixed(3),
+        taxAmount: preview.totals.taxAmount.toFixed(3),
+        totalAmount: preview.totals.totalAmount.toFixed(3),
         expectedDeliveryDate: expectedDeliveryDate || undefined,
         deliveryAddress: deliveryAddress || undefined,
         notes: notes || undefined,

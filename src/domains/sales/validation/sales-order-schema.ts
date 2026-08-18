@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  enforceLineDocumentTotals,
+  SALES_LINE_FIELDS,
+} from "@/shared/money/document-schema";
+
 const optionalText = z
   .string()
   .trim()
@@ -42,7 +47,7 @@ const salesOrderLineSchema = z.object({
       : line,
   );
 
-export const createSalesOrderSchema = z.object({
+const createSalesOrderBaseSchema = z.object({
   customerId: z.string().trim().min(1, "Customer is required."),
   currency: z.enum(["KWD", "USD", "EUR"]).default("KWD"),
   subtotal: z.coerce.number().min(0, "Subtotal cannot be negative."),
@@ -59,9 +64,19 @@ export const createSalesOrderSchema = z.object({
   lines: z.array(salesOrderLineSchema).min(1, "At least one product line is required."),
 });
 
-export const updateSalesOrderSchema = createSalesOrderSchema.extend({
-  id: z.string().trim().min(1, "Sales order is required."),
-});
+/**
+ * The server derives every money figure and rejects a caller whose own
+ * arithmetic disagrees. Applied to create and update alike: editing a draft is
+ * a second write path to the same rows, and enforcing only on create would make
+ * the edit form the way around the rule.
+ */
+export const createSalesOrderSchema = createSalesOrderBaseSchema.transform((value, ctx) =>
+  enforceLineDocumentTotals(value, ctx, SALES_LINE_FIELDS),
+);
+
+export const updateSalesOrderSchema = createSalesOrderBaseSchema
+  .extend({ id: z.string().trim().min(1, "Sales order is required.") })
+  .transform((value, ctx) => enforceLineDocumentTotals(value, ctx, SALES_LINE_FIELDS));
 
 export const salesOrderStatusActionSchema = z.object({
   id: z.string().trim().min(1, "Sales order is required."),
