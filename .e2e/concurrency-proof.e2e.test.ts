@@ -9,6 +9,13 @@ import { PaymentService } from "@/domains/sales/services/payment-service";
 /**
  * LIVE CONCURRENCY PROOFS — audit findings #3 and #4.
  *
+ * SHARED-STATE RULE: these tests run against the shared demo organization, and
+ * `valuation-sync-e2e.test.ts` asserts that organization's ABSOLUTE inventory
+ * value. Any fixture here that posts VALUED stock changes that total and breaks
+ * it, depending on which file vitest happens to run first. Fixtures in this
+ * file therefore post at zero cost — every assertion here is about quantities
+ * and statuses, never about value.
+ *
  * These run real service code against a real PostgreSQL 17 with genuinely
  * concurrent connections (Promise.all over separate queries). No mocks, no
  * simulated interleaving.
@@ -160,12 +167,17 @@ describe("LIVE race conditions", () => {
       data: {
         organizationId: ORG, poNumber: `PO-RACE-${tag}`, supplierId: supplier.id,
         status: "APPROVED", currency: "KWD",
-        subtotal: 10, taxAmount: 0, totalAmount: 10,
+        subtotal: 0, taxAmount: 0, totalAmount: 0,
         createdById: ctx.userId, orderedAt: new Date(),
         lines: {
           create: [{
             organizationId: ORG, productId, unitOfMeasureId: uomId, lineNumber: 1,
-            orderedQuantity: 10, unitCost: 1, totalCost: 10,
+            // Zero-cost deliberately. This test is about QUANTITY
+            // (receivedQuantity must never exceed orderedQuantity); the cost is
+            // incidental. Receiving at a non-zero cost adds valued stock to the
+            // shared demo organization, which breaks valuation-sync-e2e's
+            // absolute total. See the ordering note at the top of this file.
+            orderedQuantity: 10, unitCost: 0, totalCost: 0,
           }],
         },
       },
