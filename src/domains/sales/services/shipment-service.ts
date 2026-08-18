@@ -157,6 +157,9 @@ export class ShipmentService {
     const currentPicked = Number(line.pickedQuantity);
     const remaining = Number(line.quantity) - currentPicked;
 
+    // Fast, friendly rejection for the common case. NOT the concurrency guard —
+    // the conditional UPDATE below is, because this value is already stale by
+    // the time we write.
     if (quantity > remaining) {
       throw new BusinessError(
         `Cannot pick ${quantity} — only ${remaining} remaining for this line.`,
@@ -164,17 +167,40 @@ export class ShipmentService {
       );
     }
 
-    await this.shipments.addPickedQuantity(context.organizationId, line.id, quantity);
+    const delta = new Prisma.Decimal(quantity);
+    const applied = await prisma.$executeRaw`
+      UPDATE "shipment_lines"
+         SET "pickedQuantity" = "pickedQuantity" + ${delta}
+       WHERE "id" = ${line.id}
+         AND "organizationId" = ${context.organizationId}
+         AND "pickedQuantity" + ${delta} <= "quantity"
+    `;
 
-    const result = {
+    if (Number(applied) !== 1) {
+      const fresh = await prisma.shipmentLine.findFirst({
+        where: { id: line.id, organizationId: context.organizationId },
+        select: { pickedQuantity: true, quantity: true },
+      });
+      const left = fresh ? Number(fresh.quantity) - Number(fresh.pickedQuantity) : 0;
+      throw new BusinessError(
+        `Cannot pick ${quantity} — only ${left} remaining for this line.`,
+        "SHIPMENT_OVER_PICK",
+      );
+    }
+
+    const updated = await prisma.shipmentLine.findFirst({
+      where: { id: line.id, organizationId: context.organizationId },
+      select: { pickedQuantity: true, quantity: true },
+    });
+    const newPicked = Number(updated?.pickedQuantity ?? currentPicked + quantity);
+
+    return {
       picked: quantity,
-      remaining: remaining - quantity,
+      remaining: Number(updated?.quantity ?? line.quantity) - newPicked,
       lineId: line.id,
       productName: line.productName,
-      newPicked: currentPicked + quantity,
+      newPicked,
     };
-
-    return result;
   }
 
   async removePickQuantity(context: AuthenticatedRequestContext, shipmentId: string, lineId: string, quantity: number) {
@@ -200,6 +226,7 @@ export class ShipmentService {
 
     const currentPicked = Number(line.pickedQuantity);
 
+    // Fast-path message only; the conditional UPDATE below is the real guard.
     if (quantity > currentPicked) {
       throw new BusinessError(
         `Cannot remove ${quantity} — only ${currentPicked} picked for this line.`,
@@ -207,17 +234,39 @@ export class ShipmentService {
       );
     }
 
-    await this.shipments.addPickedQuantity(context.organizationId, line.id, -quantity);
+    const delta = new Prisma.Decimal(quantity);
+    const applied = await prisma.$executeRaw`
+      UPDATE "shipment_lines"
+         SET "pickedQuantity" = "pickedQuantity" - ${delta}
+       WHERE "id" = ${line.id}
+         AND "organizationId" = ${context.organizationId}
+         AND "pickedQuantity" - ${delta} >= 0
+    `;
 
-    const result = {
+    if (Number(applied) !== 1) {
+      const fresh = await prisma.shipmentLine.findFirst({
+        where: { id: line.id, organizationId: context.organizationId },
+        select: { pickedQuantity: true },
+      });
+      throw new BusinessError(
+        `Cannot remove ${quantity} — only ${Number(fresh?.pickedQuantity ?? 0)} picked for this line.`,
+        "SHIPMENT_UNDER_PICK",
+      );
+    }
+
+    const updated = await prisma.shipmentLine.findFirst({
+      where: { id: line.id, organizationId: context.organizationId },
+      select: { pickedQuantity: true },
+    });
+    const newPicked = Number(updated?.pickedQuantity ?? currentPicked - quantity);
+
+    return {
       removed: quantity,
-      remaining: currentPicked - quantity,
+      remaining: newPicked,
       lineId: line.id,
       productName: line.productName,
-      newPicked: currentPicked - quantity,
+      newPicked,
     };
-
-    return result;
   }
 
   async recomputeShipmentStatus(context: AuthenticatedRequestContext, shipmentId: string) {
@@ -267,6 +316,22 @@ export class ShipmentService {
     const salesOrderId = shipment.salesOrderId;
 
     await prisma.$transaction(async (tx) => {
+      // Claim the LOADED -> DELIVERED transition FIRST, conditionally. Only one
+      // concurrent caller can match `status = 'LOADED'`; the loser aborts the
+      // whole transaction before any ledger entry is written, so a shipment can
+      // never be posted to inventory twice.
+      const claimed = await tx.shipment.updateMany({
+        where: { id, organizationId: context.organizationId, status: "LOADED" },
+        data: { status: "DELIVERED", deliveredAt: now },
+      });
+
+      if (claimed.count !== 1) {
+        throw new BusinessError(
+          "Shipment cannot be delivered from its current state.",
+          "SHIPMENT_INVALID_STATUS",
+        );
+      }
+
       const postingLines = shipment.lines.map((line) => {
         return {
           productId: line.productId,
@@ -323,10 +388,7 @@ export class ShipmentService {
         }
       }
 
-      await tx.shipment.updateMany({
-        where: { id, organizationId: context.organizationId },
-        data: { status: "DELIVERED", deliveredAt: now },
-      });
+      // Status was already claimed atomically at the top of this transaction.
 
       for (const line of shipment.lines) {
         await tx.salesOrderLine.updateMany({

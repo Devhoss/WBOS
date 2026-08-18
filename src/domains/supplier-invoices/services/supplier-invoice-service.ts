@@ -1,4 +1,7 @@
+import { Prisma } from "@prisma/client";
+
 import { ActivityLogRepository } from "@/domains/activity/repositories/activity-log-repository";
+import { prisma } from "@/infrastructure/database/prisma";
 import { DocumentNumberService } from "@/domains/documents/services/document-number-service";
 import { SupplierRepository } from "@/domains/suppliers/repositories/supplier-repository";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
@@ -129,24 +132,65 @@ export class SupplierInvoiceService {
       prefix: "PAY",
     });
 
-    const payment = await this.invoices.createPayment(context.organizationId, documentNumber, {
-      supplierInvoiceId: invoice.id,
-      amount: input.amount,
-      currency: input.currency,
-      method: input.method,
-      reference: input.reference,
-      paidAt: input.paidAt ?? now,
-      notes: input.notes,
-      createdById: context.userId,
+    const amount = new Prisma.Decimal(input.amount);
+
+    // Same guarantee as customer payments: one transaction, and the balance
+    // moves by a conditional relative update so two concurrent payments cannot
+    // overwrite each other or push the invoice past its total.
+    const payment = await prisma.$transaction(async (tx) => {
+      const applied = await tx.$executeRaw`
+        UPDATE "supplier_invoices"
+           SET "amountPaid" = "amountPaid" + ${amount}
+         WHERE "id" = ${invoice.id}
+           AND "organizationId" = ${context.organizationId}
+           AND "status" NOT IN ('DRAFT', 'CANCELLED', 'PAID')
+           AND "amountPaid" + ${amount} <= "totalAmount"
+      `;
+
+      if (Number(applied) !== 1) {
+        const fresh = await tx.supplierInvoice.findFirst({
+          where: { id: invoice.id, organizationId: context.organizationId },
+          select: { amountPaid: true, totalAmount: true },
+        });
+        const outstanding = fresh
+          ? Number(fresh.totalAmount) - Number(fresh.amountPaid)
+          : 0;
+        throw new BusinessError(
+          `Payment of ${Number(input.amount).toFixed(3)} would exceed the outstanding balance of ${outstanding.toFixed(3)}.`,
+          "SUPPLIER_INVOICE_OVERPAYMENT",
+        );
+      }
+
+      const created = await tx.supplierInvoicePayment.create({
+        data: {
+          organizationId: context.organizationId,
+          paymentNumber: documentNumber,
+          supplierInvoiceId: invoice.id,
+          amount,
+          currency: input.currency,
+          method: input.method,
+          reference: input.reference,
+          paidAt: input.paidAt ?? now,
+          notes: input.notes,
+          createdById: context.userId,
+        },
+      });
+
+      const settled = await tx.supplierInvoice.findFirstOrThrow({
+        where: { id: invoice.id, organizationId: context.organizationId },
+        select: { amountPaid: true, totalAmount: true },
+      });
+
+      await tx.supplierInvoice.updateMany({
+        where: { id: invoice.id, organizationId: context.organizationId },
+        data:
+          Number(settled.amountPaid) >= Number(settled.totalAmount)
+            ? { status: "PAID", paidAt: now }
+            : { status: "PARTIALLY_PAID" },
+      });
+
+      return created;
     });
-
-    await this.invoices.updateAmountPaid(context.organizationId, invoice.id, newTotalPaid);
-
-    if (newTotalPaid >= totalAmount) {
-      await this.invoices.markPaid(context.organizationId, invoice.id, now);
-    } else {
-      await this.invoices.updateStatus(context.organizationId, invoice.id, "PARTIALLY_PAID");
-    }
 
     await this.activityLogs.create({
       organizationId: context.organizationId,

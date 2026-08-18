@@ -469,7 +469,11 @@ export class ReturnOrderService {
         returnOrder.salesOrder.id,
         input.lines.map((l) => {
           const ol = returnOrder.lines.find((rl) => rl.id === l.lineId);
-          return { productId: ol?.productId ?? "", receivedQuantity: Number(ol?.receivedQuantity ?? 0) };
+          return {
+            productId: ol?.productId ?? "",
+            receivedQuantity: Number(ol?.receivedQuantity ?? 0),
+            invoiceLineId: ol?.invoiceLineId ?? null,
+          };
         }),
       );
     } else if (returnOrder.invoice) {
@@ -483,7 +487,11 @@ export class ReturnOrderService {
           invoice.salesOrderId,
           input.lines.map((l) => {
             const ol = returnOrder.lines.find((rl) => rl.id === l.lineId);
-            return { productId: ol?.productId ?? "", receivedQuantity: Number(ol?.receivedQuantity ?? 0) };
+            return {
+            productId: ol?.productId ?? "",
+            receivedQuantity: Number(ol?.receivedQuantity ?? 0),
+            invoiceLineId: ol?.invoiceLineId ?? null,
+          };
           }),
         );
       }
@@ -590,24 +598,83 @@ export class ReturnOrderService {
     }
   }
 
+  /**
+   * Credit returned quantity back to the ORDER LINE it came from.
+   *
+   * This previously matched on `{ salesOrderId, productId }` with no line id,
+   * so an order carrying the same product on two lines had the full returned
+   * quantity added to BOTH — double-counting the return and poisoning the
+   * `shipped - returned` availability guard for later returns.
+   *
+   * Duplicate product lines are INTENTIONAL: a NORMAL paid line and a
+   * FREE_SAMPLE line for the same product routinely coexist on one order
+   * (e.g. 100 sold + 10 free). Returns must therefore never be matched by
+   * productId alone.
+   *
+   * Resolution order:
+   *   1. `invoiceLineId` -> `InvoiceLine.salesOrderLineId` gives the exact
+   *      source line. This is the normal path and is always preferred.
+   *   2. Fallback, only when no invoice line is recorded: allocate across the
+   *      order's matching product lines in existing `lineNumber` order, capped
+   *      by each line's remaining `shipped - returned`. This deliberately
+   *      introduces no new policy about which line "should" absorb a return —
+   *      it simply fills in the order the lines already have, and guarantees
+   *      the total credited equals the quantity returned while no line is
+   *      credited beyond what it actually shipped.
+   */
   private async updateReturnedQuantities(
     organizationId: string,
     salesOrderId: string,
-    lines: Array<{ productId: string; receivedQuantity: number }>,
+    lines: Array<{ productId: string; receivedQuantity: number; invoiceLineId?: string | null }>,
   ) {
     for (const line of lines) {
       if (!line.productId || line.receivedQuantity <= 0) continue;
 
-      await prisma.salesOrderLine.updateMany({
-        where: {
-          organizationId,
-          salesOrderId,
-          productId: line.productId,
-        },
-        data: {
-          returnedQuantity: { increment: line.receivedQuantity },
-        },
+      let targetLineId: string | null = null;
+
+      if (line.invoiceLineId) {
+        const invoiceLine = await prisma.invoiceLine.findFirst({
+          where: { id: line.invoiceLineId, organizationId },
+          select: { salesOrderLineId: true },
+        });
+        targetLineId = invoiceLine?.salesOrderLineId ?? null;
+      }
+
+      if (targetLineId) {
+        const applied = await prisma.$executeRaw`
+          UPDATE "sales_order_lines"
+             SET "returnedQuantity" = "returnedQuantity" + ${new Prisma.Decimal(line.receivedQuantity)}
+           WHERE "id" = ${targetLineId}
+             AND "organizationId" = ${organizationId}
+             AND "returnedQuantity" + ${new Prisma.Decimal(line.receivedQuantity)} <= "shippedQuantity"
+        `;
+        if (Number(applied) === 1) continue;
+        // Fall through to allocation if the exact line cannot absorb it.
+      }
+
+      const candidates = await prisma.salesOrderLine.findMany({
+        where: { organizationId, salesOrderId, productId: line.productId },
+        orderBy: { lineNumber: "asc" },
+        select: { id: true, shippedQuantity: true, returnedQuantity: true },
       });
+
+      let outstanding = line.receivedQuantity;
+      for (const candidate of candidates) {
+        if (outstanding <= 0) break;
+        const capacity =
+          Number(candidate.shippedQuantity) - Number(candidate.returnedQuantity);
+        if (capacity <= 0) continue;
+
+        const take = Math.min(capacity, outstanding);
+        const applied = await prisma.$executeRaw`
+          UPDATE "sales_order_lines"
+             SET "returnedQuantity" = "returnedQuantity" + ${new Prisma.Decimal(take)}
+           WHERE "id" = ${candidate.id}
+             AND "organizationId" = ${organizationId}
+             AND "returnedQuantity" + ${new Prisma.Decimal(take)} <= "shippedQuantity"
+        `;
+        if (Number(applied) === 1) outstanding -= take;
+      }
     }
   }
 

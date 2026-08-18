@@ -54,12 +54,29 @@ function createMockInvoice(overrides = {}) {
   };
 }
 
+/**
+ * Stub the post-increment balance re-read performed inside the payment
+ * transaction. `paid` is the balance AFTER this payment is applied.
+ */
+function settleAt(paid: number, total: number) {
+  (prisma.invoice.findFirstOrThrow as ReturnType<typeof vi.fn>).mockResolvedValue({
+    amountPaid: new Prisma.Decimal(paid),
+    totalAmount: new Prisma.Decimal(total),
+  });
+}
+
 describe("Payment Pipeline", () => {
   let paymentService: PaymentService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     paymentService = new PaymentService();
+
+    // The balance now moves via a conditional relative UPDATE inside a
+    // transaction, and status is derived from a re-read of the POST-increment
+    // balance rather than the stale pre-read. Each test declares what that
+    // re-read should return via settleAt(); assertions are unchanged.
+    settleAt(0, 100);
   });
 
   it("should prevent overpayment", async () => {
@@ -109,6 +126,7 @@ describe("Payment Pipeline", () => {
     const mockSOUpdate = prisma.salesOrder.updateMany as ReturnType<typeof vi.fn>;
     const mockDocGen = vi.spyOn(DocumentNumberService.prototype, "generate");
     mockDocGen.mockResolvedValue({ documentNumber: "PAY-000001", sequence: 1, year: 2026 });
+    settleAt(100, 100);
 
     const result = await paymentService.record(mockContext(), {
       invoiceId: "inv-1",
@@ -139,6 +157,7 @@ describe("Payment Pipeline", () => {
     const mockInvoiceUpdate = prisma.invoice.updateMany as ReturnType<typeof vi.fn>;
     const mockDocGen = vi.spyOn(DocumentNumberService.prototype, "generate");
     mockDocGen.mockResolvedValue({ documentNumber: "PAY-000002", sequence: 2, year: 2026 });
+    settleAt(50, 200);
 
     await paymentService.record(mockContext(), {
       invoiceId: "inv-1",

@@ -146,15 +146,25 @@ export class GoodsReceiptService {
       }
 
       for (const line of processedLines) {
-        await tx.purchaseOrderLine.updateMany({
-          where: {
-            id: line.poLine.id,
-            organizationId: context.organizationId,
-          },
-          data: {
-            receivedQuantity: { increment: new Prisma.Decimal(line.quantity) },
-          },
-        });
+        // Conditional increment: the invariant lives in the WHERE clause, so a
+        // concurrent receipt that already consumed the remaining quantity makes
+        // this match zero rows and abort the whole transaction. The `remaining`
+        // computed before the transaction is a friendly pre-check only.
+        const qty = new Prisma.Decimal(line.quantity);
+        const applied = await tx.$executeRaw`
+          UPDATE "purchase_order_lines"
+             SET "receivedQuantity" = "receivedQuantity" + ${qty}
+           WHERE "id" = ${line.poLine.id}
+             AND "organizationId" = ${context.organizationId}
+             AND "receivedQuantity" + ${qty} <= "orderedQuantity"
+        `;
+
+        if (Number(applied) !== 1) {
+          throw new BusinessError(
+            `Receiving quantity exceeds the remaining ordered quantity for ${line.product.id}. Another receipt may have been recorded first.`,
+            "PURCHASING_OVER_RECEIVE",
+          );
+        }
       }
 
       const updatedLines = await tx.purchaseOrderLine.findMany({

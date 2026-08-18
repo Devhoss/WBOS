@@ -5,6 +5,7 @@ const { mockPrisma, activityLogRepositoryCreate } = vi.hoisted(() => {
   const supplierInvoice = {
     create: vi.fn(),
     findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
     findMany: vi.fn(),
     count: vi.fn(),
     update: vi.fn(),
@@ -31,6 +32,9 @@ const { mockPrisma, activityLogRepositoryCreate } = vi.hoisted(() => {
       supplier,
       documentSequence,
       activityLog,
+      // Conditional relative UPDATE: 1 = the invariant held.
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      $transaction: vi.fn(),
     },
     activityLogRepositoryCreate,
   };
@@ -110,6 +114,15 @@ describe("SupplierInvoiceService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new SupplierInvoiceService();
+
+    // recordPayment now performs the balance change inside a transaction using
+    // a conditional relative UPDATE, then re-reads the POST-increment balance
+    // to decide the status. Wire the transaction through to the same mock
+    // client; individual tests declare the settled balance.
+    mockPrisma.$executeRaw.mockResolvedValue(1);
+    mockPrisma.$transaction.mockImplementation((fn: (tx: unknown) => Promise<unknown>) =>
+      fn(mockPrisma),
+    );
   });
 
   describe("create", () => {
@@ -196,6 +209,10 @@ describe("SupplierInvoiceService", () => {
   describe("recordPayment", () => {
     it("records a deposit and transitions to PARTIALLY_PAID", async () => {
       mockPrisma.supplierInvoice.findFirst.mockResolvedValue(makeInvoice({ status: "ISSUED" }));
+      // Balance AFTER the conditional increment, re-read inside the transaction.
+      mockPrisma.supplierInvoice.findFirstOrThrow.mockResolvedValue({
+        amountPaid: D(50), totalAmount: D(100),
+      });
       mockPrisma.supplierInvoicePayment.create.mockResolvedValue({
         id: "sp-1", paymentNumber: "PAY-2026-000001", amount: D(50),
       });
@@ -210,7 +227,10 @@ describe("SupplierInvoiceService", () => {
         notes: undefined,
       });
 
-      expect(mockPrisma.supplierInvoice.updateMany).toHaveBeenCalledTimes(2);
+      // The balance moves via a conditional relative UPDATE (not a second
+      // updateMany), so exactly one updateMany remains: the status change.
+      expect(mockPrisma.$executeRaw).toHaveBeenCalled();
+      expect(mockPrisma.supplierInvoice.updateMany).toHaveBeenCalledTimes(1);
       expect(mockPrisma.supplierInvoice.updateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: { status: "PARTIALLY_PAID" },
       }));
@@ -221,6 +241,9 @@ describe("SupplierInvoiceService", () => {
 
     it("marks PAID when fully covered", async () => {
       mockPrisma.supplierInvoice.findFirst.mockResolvedValue(makeInvoice({ status: "PARTIALLY_PAID", amountPaid: D(50) }));
+      mockPrisma.supplierInvoice.findFirstOrThrow.mockResolvedValue({
+        amountPaid: D(100), totalAmount: D(100),
+      });
       mockPrisma.supplierInvoicePayment.create.mockResolvedValue({
         id: "sp-2", paymentNumber: "PAY-2026-000002", amount: D(50),
       });

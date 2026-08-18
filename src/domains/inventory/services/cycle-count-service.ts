@@ -114,6 +114,21 @@ export class CycleCountService {
     const now = new Date();
 
     await prisma.$transaction(async (tx) => {
+      // Claim COMPLETED -> APPROVED first and conditionally. Without this, two
+      // concurrent approvals both post the variance adjustment and the count
+      // overshoots in the opposite direction.
+      const claimed = await tx.cycleCount.updateMany({
+        where: { id, organizationId: context.organizationId, status: "COMPLETED" },
+        data: { status: "APPROVED", approvedById: context.userId, approvedAt: now },
+      });
+
+      if (claimed.count !== 1) {
+        throw new BusinessError(
+          "Only completed cycle counts can be approved.",
+          "CYCLE_COUNT_INVALID_STATUS",
+        );
+      }
+
       const postingLines = await Promise.all(
         count.lines
           .filter((line) => {
@@ -210,10 +225,9 @@ export class CycleCountService {
         }
       }
 
-      await this.counts.updateStatus(context.organizationId, id, "APPROVED", {
-        approvedById: context.userId,
-        approvedAt: now,
-      });
+      // Status was already claimed atomically at the top of this transaction.
+      // (It also used a non-transactional client here, so it would have
+      // survived a rollback of the adjustments it was meant to accompany.)
     });
 
     await this.activityLogs.create({

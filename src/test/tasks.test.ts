@@ -8,6 +8,7 @@ import { NotificationRepository } from "@/domains/notifications/repositories/not
 import { TaskDomainService } from "@/domains/tasks/services/task-domain-service";
 import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
 import { prisma } from "@/infrastructure/database/prisma";
+import { ShipmentService } from "@/domains/sales/services/shipment-service";
 import { BusinessError } from "@/shared/errors/business-error";
 
 function mockContext(overrides = {}) {
@@ -107,7 +108,6 @@ function mockShipmentDependencies() {
   vi.spyOn(ShipmentRepository.prototype, "updateStatus").mockResolvedValue({ count: 1 } as any);
   vi.spyOn(ActivityLogRepository.prototype, "create").mockResolvedValue({} as any);
 
-  return vi.spyOn(ShipmentRepository.prototype, "addPickedQuantity");
 }
 
 describe("TaskDomainService", () => {
@@ -369,12 +369,20 @@ describe("TaskDomainService", () => {
       vi.spyOn(TaskRepository.prototype, "findById").mockResolvedValue(mockTask as any);
       vi.spyOn(TaskRepository.prototype, "updateLineQuantity").mockResolvedValue({} as any);
       vi.spyOn(TaskRepository.prototype, "findMany").mockResolvedValue({ data: [], total: 0 } as any);
-      const addPickSpy = mockShipmentDependencies();
+      mockShipmentDependencies();
+
+      const addPickQuantitySpy = vi.spyOn(ShipmentService.prototype, "addPickQuantity");
 
       const result = await service.updateLine(mockContext(), "task-1", "tl-1", 5);
 
       expect(result).not.toBeNull();
-      expect(addPickSpy).toHaveBeenCalled();
+      // Assert the delegation this test is named for. Previously it asserted
+      // ShipmentRepository.addPickedQuantity — an unconditional increment that
+      // the over-pick fix deliberately replaced with a conditional UPDATE, so
+      // that assertion described the unsafe mechanism rather than the contract.
+      expect(addPickQuantitySpy).toHaveBeenCalledWith(
+        expect.anything(), "ship-1", "sl-1", 5,
+      );
     });
 
     it("should report COMPLETED line status once the final quantity is reached", async () => {
