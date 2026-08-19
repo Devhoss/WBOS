@@ -1,0 +1,9 @@
+# Standalone ESM scripts must keep LF in the working tree.
+#
+# Two things break otherwise. Vitest fails to transform a CRLF .mjs with
+# "Invalid or unexpected token" — Node imports the same file happily, so the
+# failure only shows up in the test run. And a shebang whose line ends in CRLF
+# makes the script unrunnable on Linux, because the kernel looks for
+# "/usr/bin/env node\r".
+*.mjs   text eol=lf
+*.d.mts text eol=lf
