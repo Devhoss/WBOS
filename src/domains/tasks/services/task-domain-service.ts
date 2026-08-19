@@ -659,8 +659,6 @@ export class TaskDomainService {
 
     let duplicate = false;
     let shipmentId: string | undefined;
-    let shipmentLineId: string | undefined;
-    let taskLineId: string | undefined;
 
     try {
       const task = await prisma.task.findFirst({
@@ -673,7 +671,6 @@ export class TaskDomainService {
 
       const taskLine = task.lines.find((l) => l.id === input.taskLineId);
       if (!taskLine) throw new BusinessError("Task line not found.", "TASK_LINE_NOT_FOUND");
-      taskLineId = taskLine.id;
 
       shipmentId = (task.data as Record<string, unknown> | null)?.shipmentId as string | undefined;
       if (!shipmentId) throw new BusinessError("Task is missing shipment reference.", "TASK_MISSING_SHIPMENT");
@@ -700,7 +697,6 @@ export class TaskDomainService {
         },
       });
       if (!shipmentLine) throw new BusinessError("Shipment line was not found.", "SHIPMENT_LINE_NOT_FOUND");
-      shipmentLineId = shipmentLine.id;
       const validShipmentLineId = shipmentLine.id;
 
       const matches =
@@ -710,6 +706,21 @@ export class TaskDomainService {
         throw new BusinessError("Scanned barcode does not match the expected pick line.", "PICK_BARCODE_MISMATCH");
       }
 
+      /**
+       * Everything the pick decides happens in one transaction.
+       *
+       * The final task-line status used to be set AFTER the transaction
+       * committed, from a follow-up read. A crash, a timeout or a dropped
+       * connection in that window left the line at its full quantity with
+       * status IN_PROGRESS. Mobile maps that to "pending", so `pendingLine`
+       * stayed pinned to a line reading 10/10, `allPicked` was false because
+       * the line count never completed, and every further scan hit
+       * `remaining <= 0` and returned silently — the frozen scanner at 100%
+       * that was reported once already, with no way out of it from the app.
+       *
+       * The UPDATE now RETURNs the post-increment quantities, so the status is
+       * derived and written inside the same transaction that moved the number.
+       */
       await prisma.$transaction(async (tx) => {
         await tx.pickingAction.create({
           data: {
@@ -730,50 +741,40 @@ export class TaskDomainService {
           },
         });
 
-        const shipmentUpdateCount = await tx.$executeRaw`
+        const updated = await tx.$queryRaw<
+          Array<{ pickedQuantity: Prisma.Decimal; quantity: Prisma.Decimal }>
+        >`
           UPDATE "shipment_lines"
           SET "pickedQuantity" = "pickedQuantity" + ${new Prisma.Decimal(delta)},
               "barcodeVerifiedAt" = NOW()
           WHERE "id" = ${shipmentLine.id}
             AND "organizationId" = ${context.organizationId}
             AND "pickedQuantity" + ${new Prisma.Decimal(delta)} <= "quantity"
+          RETURNING "pickedQuantity", "quantity"
         `;
-        if (Number(shipmentUpdateCount) !== 1) {
+        if (updated.length !== 1) {
           throw new BusinessError("Cannot pick beyond the ordered quantity.", "SHIPMENT_OVER_PICK");
         }
+
+        const { pickedQuantity, quantity } = updated[0];
+        const lineComplete = Number(pickedQuantity) >= Number(quantity);
 
         await tx.taskLine.updateMany({
           where: { id: taskLine.id, taskId, organizationId: context.organizationId },
           data: {
             completedQuantity: { increment: new Prisma.Decimal(delta) },
-            status: "IN_PROGRESS",
+            status: lineComplete ? "COMPLETED" : "IN_PROGRESS",
           },
         });
-      }, { timeout: 3000, maxWait: 3000 });
 
-      const updatedShipmentLine = await prisma.shipmentLine.findFirst({
-        where: { id: shipmentLineId, organizationId: context.organizationId },
-        select: { pickedQuantity: true, quantity: true },
-      });
-      if (updatedShipmentLine && taskLineId) {
-        await prisma.taskLine.updateMany({
-          where: { id: taskLineId, taskId, organizationId: context.organizationId },
-          data: {
-            status: Number(updatedShipmentLine.pickedQuantity) >= Number(updatedShipmentLine.quantity)
-              ? "COMPLETED"
-              : "IN_PROGRESS",
-          },
-        });
-        await prisma.pickingAction.updateMany({
+        await tx.pickingAction.updateMany({
           where: {
             organizationId: context.organizationId,
             clientEventId: input.clientEventId,
           },
-          data: {
-            resultingQuantity: updatedShipmentLine.pickedQuantity,
-          },
+          data: { resultingQuantity: pickedQuantity },
         });
-      }
+      }, { timeout: 3000, maxWait: 3000 });
 
       if (shipmentId) {
         await this.shipmentService.recomputeShipmentStatus(context, shipmentId);
