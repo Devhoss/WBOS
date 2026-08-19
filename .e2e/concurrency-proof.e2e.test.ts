@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { createFixtureTracker } from "./fixtures";
 import { ShipmentService } from "@/domains/sales/services/shipment-service";
 import { GoodsReceiptService } from "@/domains/purchasing/services/goods-receipt-service";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
@@ -44,6 +45,17 @@ let warehouseId: string;
 let productId: string;
 let uomId: string;
 
+/**
+ * The dedicated product and warehouse were already isolated, but nothing ever
+ * removed them, nor the sales orders, purchase orders and invoices each test
+ * created.
+ */
+const fixtures = createFixtureTracker();
+
+afterAll(async () => {
+  await fixtures.cleanup();
+});
+
 beforeAll(async () => {
   // A product and warehouse belonging to this file alone.
   //
@@ -76,8 +88,8 @@ beforeAll(async () => {
     data: { organizationId: ORG, code: `RCF-${tag}`.slice(0, 20), name: `Race Fixture WH ${tag}` },
   });
 
-  warehouseId = warehouse.id;
-  productId = product.id;
+  warehouseId = fixtures.warehouse(warehouse.id);
+  productId = fixtures.product(product.id);
   uomId = seedProduct.unitOfMeasureId;
 });
 
@@ -102,6 +114,7 @@ async function makeShipment(status: "PICKING" | "LOADED", qty: number, picked: n
     },
     include: { lines: true },
   });
+  fixtures.salesOrder(so.id);
 
   const shipment = await prisma.shipment.create({
     data: {
@@ -118,6 +131,7 @@ async function makeShipment(status: "PICKING" | "LOADED", qty: number, picked: n
     },
     include: { lines: true },
   });
+  fixtures.shipment(shipment.id);
 
   return { shipment, salesOrderLineId: so.lines[0].id, lineId: shipment.lines[0].id };
 }
@@ -216,6 +230,7 @@ describe("LIVE race conditions", () => {
       },
       include: { lines: true },
     });
+    fixtures.purchaseOrder(po.id);
     const poLine = po.lines[0];
 
     const remaining = Number(poLine.orderedQuantity) - Number(poLine.receivedQuantity);
@@ -258,6 +273,7 @@ describe("LIVE race conditions", () => {
         createdById: ctx.userId, orderedAt: new Date(),
       },
     });
+    fixtures.salesOrder(so.id);
     const invoice = await prisma.invoice.create({
       data: {
         organizationId: ORG, invoiceNumber: `INV-PAY-${tag}`, salesOrderId: so.id,
@@ -353,6 +369,7 @@ describe("transaction rollback", () => {
         createdById: ctx.userId, orderedAt: new Date(),
       },
     });
+    fixtures.salesOrder(so.id);
     const invoice = await prisma.invoice.create({
       data: {
         organizationId: ORG, invoiceNumber: `INV-RB-${tag}`, salesOrderId: so.id,

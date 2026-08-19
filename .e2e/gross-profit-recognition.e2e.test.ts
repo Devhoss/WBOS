@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { createFixtureTracker } from "./fixtures";
 import { InventoryReportService } from "@/domains/reports/services/inventory-report-service";
 import { CreditNoteService } from "@/domains/credit-notes/services/credit-note-service";
 
@@ -31,6 +32,16 @@ const ctx = { organizationId: ORG, userId: "demo-system-user" };
 let productId: string;
 let uomId: string;
 let customerId: string;
+
+/**
+ * This suite had no teardown at all. Every run abandoned one sales order and
+ * one ISSUED invoice, which the revenue and gross-profit reports then counted.
+ */
+const fixtures = createFixtureTracker();
+
+afterAll(async () => {
+  await fixtures.cleanup();
+});
 
 beforeAll(async () => {
   const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
@@ -66,6 +77,7 @@ async function makeInvoice(status: InvoiceStatus, unitPrice: number, paid = 0) {
     },
     include: { lines: true },
   });
+  fixtures.salesOrder(so.id);
 
   return prisma.invoice.create({
     data: {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
 import { CreditNoteService } from "@/domains/credit-notes/services/credit-note-service";
@@ -36,12 +36,43 @@ let productId: string;
 let uomId: string;
 let customerId: string;
 
+/**
+ * Everything this suite creates, so it can take it all away again.
+ *
+ * There was no afterAll at all. Every run abandoned one sales order and one
+ * ISSUED invoice, and ISSUED invoices are counted by the revenue and
+ * gross-profit reports — so the suite was quietly inflating the figures of the
+ * database it ran against, 28 invoices' worth by the time it was noticed. The
+ * same defect as returns-duplicate-product-lines had.
+ */
+const created = { salesOrderIds: [] as string[], invoiceIds: [] as string[] };
+
 beforeAll(async () => {
   const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
   const cust = await prisma.customer.findFirstOrThrow({ where: { organizationId: ORG } });
   productId = prod.id;
   uomId = prod.unitOfMeasureId;
   customerId = cust.id;
+});
+
+afterAll(async () => {
+  if (created.invoiceIds.length > 0) {
+    const creditNotes = await prisma.creditNote.findMany({
+      where: { invoiceId: { in: created.invoiceIds } },
+      select: { id: true },
+    });
+    const creditNoteIds = creditNotes.map((c) => c.id);
+    if (creditNoteIds.length > 0) {
+      await prisma.creditNoteLine.deleteMany({ where: { creditNoteId: { in: creditNoteIds } } });
+      await prisma.creditNote.deleteMany({ where: { id: { in: creditNoteIds } } });
+    }
+    await prisma.invoiceLine.deleteMany({ where: { invoiceId: { in: created.invoiceIds } } });
+    await prisma.invoice.deleteMany({ where: { id: { in: created.invoiceIds } } });
+  }
+  if (created.salesOrderIds.length > 0) {
+    await prisma.salesOrderLine.deleteMany({ where: { salesOrderId: { in: created.salesOrderIds } } });
+    await prisma.salesOrder.deleteMany({ where: { id: { in: created.salesOrderIds } } });
+  }
 });
 
 /** An isolated ISSUED invoice worth `total`, with one line, owned by nothing else. */
@@ -66,8 +97,9 @@ async function makeInvoice(total: number) {
     },
     include: { lines: true },
   });
+  created.salesOrderIds.push(so.id);
 
-  return prisma.invoice.create({
+  const invoice = await prisma.invoice.create({
     data: {
       organizationId: ORG,
       invoiceNumber: `INV-CN-${tag}`,
@@ -105,6 +137,8 @@ async function makeInvoice(total: number) {
     },
     include: { lines: true },
   });
+  created.invoiceIds.push(invoice.id);
+  return invoice;
 }
 
 /** A credit note input worth exactly `amount` against one invoice line. */

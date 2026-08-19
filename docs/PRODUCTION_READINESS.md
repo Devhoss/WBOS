@@ -254,6 +254,28 @@ parses the URL into `-h/-p/-U/-d` arguments and passes the password via the `PGP
 child process. This strips Prisma-only query parameters (`schema`, `pgbouncer`, …) that `pg_dump`/`pg_restore`
 reject, and keeps the password out of process arguments/logs. Both backup and restore use the same path.
 
+## Data integrity validation
+
+`scripts/integrity-diagnostics.mjs` asserts the database invariants the
+application relies on — quantity ceilings, money ceilings, invoice arithmetic,
+inventory sign and cost consistency, tenancy on child rows, and leftover test
+fixtures. Read-only, so it is safe to run against any target.
+
+```bash
+npm run db:integrity        # exits non-zero on a real violation
+```
+
+Run it **before** a deployment and **again after** `prisma migrate deploy`.
+Seven of these invariants are also enforced by database CHECK constraints; the
+script covers the rest, and confirms the constrained ones still hold on data
+written before the constraints existed.
+
+Known advisory on the demo dataset: `SO-2026-000002` carries a 5% discount on
+76.750, which is exactly 3.8375 — half a fils. It was stored rounded to 3.838
+while its total was computed from the unrounded figure, so the document does not
+foot by one fils. It is kept deliberately as the fixture for the
+server-authoritative totals work; see `src/shared/money/document-totals.ts`.
+
 ## Restore procedure
 
 - [x] Restore from a backup package restores database + uploads

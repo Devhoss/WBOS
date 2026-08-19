@@ -30,7 +30,8 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:restart": "docker compose restart",
-    "docker:pull": "docker compose pull"
+    "docker:pull": "docker compose pull",
+    "db:integrity": "node scripts/integrity-diagnostics.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.10.1",

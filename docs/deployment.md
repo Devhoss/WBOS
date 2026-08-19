@@ -319,6 +319,28 @@ docker compose exec app npx prisma migrate deploy
 docker compose exec app npx prisma migrate status
 ```
 
+### Validate Data Integrity
+
+Run before cutting over to a target, and again immediately after
+`prisma migrate deploy`. The script is read-only — it issues nothing but
+SELECTs — so it is safe against production.
+
+```bash
+docker compose exec app node scripts/integrity-diagnostics.mjs
+# or, locally against DATABASE_URL
+npm run db:integrity
+```
+
+It exits non-zero if any invariant is violated or any check fails to run, so it
+can gate a deploy script directly. Advisories (for example the one legacy
+invoice that does not foot by one fils, `SO-2026-000002`) are reported but do
+not fail the run. Add `--json` for machine-readable output.
+
+A useful thing it catches: end-to-end suites create documents with hand-built
+numbers, so any document whose number does not match the `SO-YYYY-NNNNNN` shape
+produced by `DocumentNumberService` means a test suite has run against that
+database.
+
 ### Seed Data
 
 ```bash

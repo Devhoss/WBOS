@@ -31,6 +31,7 @@ pnpm db:studio              # Prisma Studio (port 5555)
 pnpm db:seed                # Basic seed (node prisma/seed.mjs)
 pnpm db:demo                # Demo seed with full sample data
 pnpm db:fresh               # Reset + demo seed
+pnpm db:integrity           # Read-only integrity report (exits non-zero on a violation)
 ```
 
 ## Architecture
@@ -118,8 +119,16 @@ src/
 ## Known Limitations (do not expand scope to fix)
 
 - `supplierPerformance()` falls back to `supplier.leadTimeDays` when no receipt history exists.
-- E2E fixtures must not mutate demo data. `valuation-sync-e2e` asserts an absolute organisation-wide inventory value of 600.750, so any test that leaves value behind makes its `beforeAll` fail — and a failed `beforeAll` SKIPS the suite, which still reads as green in the summary line. Give a test its own product and warehouse and clean up in `afterAll`.
+- E2E fixtures must not mutate demo data. `valuation-sync-e2e` asserts an absolute organisation-wide inventory value of 600.750, so any test that leaves value behind makes its `beforeAll` fail — and a failed `beforeAll` SKIPS the suite, which still reads as green in the summary line. Give a test its own product and warehouse, and tear them down with the shared tracker in `.e2e/fixtures.ts` (`createFixtureTracker()` + `afterAll(() => fixtures.cleanup())`) rather than hand-rolling the delete order — most of these relations are `onDelete: Restrict` and the ledger has to be unwound before the products it references.
 - The `backup-service.test.ts` tests fail on Windows due to tar path resolution (`Cannot connect to C:`). This is a pre-existing environment issue, not a code bug.
+
+## Planned work
+
+- **Multi-page Proof of Delivery** — signed delivery paperwork is photographed
+  page by page, so a delivery needs many authenticated attachments rather than
+  the single `SalesOrder.signedInvoicePath` it has today. Specified but not
+  implemented: see `docs/next-feature-proof-of-delivery.md`, which also records
+  the authenticated storage/download architecture that must be preserved.
 
 ## Documentation
 

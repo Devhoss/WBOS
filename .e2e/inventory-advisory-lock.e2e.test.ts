@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { createFixtureTracker } from "./fixtures";
 import { InventoryPostingService } from "@/domains/inventory/services/inventory-posting-service";
 
 /**
@@ -28,6 +29,13 @@ vi.mock("@/infrastructure/request/authenticated-request-context", () => ({
 const ORG = "bootstrap-org-001";
 
 let uomId: string;
+
+/** Isolated pairs were created per test and never removed. */
+const fixtures = createFixtureTracker();
+
+afterAll(async () => {
+  await fixtures.cleanup();
+});
 
 beforeAll(async () => {
   const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
@@ -57,7 +65,10 @@ async function makeIsolatedPair(label: string) {
     data: { organizationId: ORG, code: `ADV-${tag}`.slice(0, 20), name: `Advisory WH ${tag}` },
   });
 
-  return { productId: product.id, warehouseId: warehouse.id };
+  return {
+    productId: fixtures.product(product.id),
+    warehouseId: fixtures.warehouse(warehouse.id),
+  };
 }
 
 function movement(

@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
+import { createFixtureTracker } from "./fixtures";
 import { CreditNoteService } from "@/domains/credit-notes/services/credit-note-service";
 
 /**
@@ -32,6 +33,16 @@ let productId: string;
 let uomId: string;
 let customerId: string;
 
+/**
+ * This suite had no teardown at all. Every run abandoned one sales order and
+ * one ISSUED invoice, which the revenue and gross-profit reports then counted.
+ */
+const fixtures = createFixtureTracker();
+
+afterAll(async () => {
+  await fixtures.cleanup();
+});
+
 beforeAll(async () => {
   const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
   const cust = await prisma.customer.findFirstOrThrow({ where: { organizationId: ORG } });
@@ -60,6 +71,7 @@ async function makeInvoice(total: number, paid = 0) {
     },
     include: { lines: true },
   });
+  fixtures.salesOrder(so.id);
 
   // Seed amountPaid directly: this file is about the CREDIT path, and going
   // through PaymentService would drag its own status writes into the fixture.
