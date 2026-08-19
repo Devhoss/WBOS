@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, vi } from "vitest";
 
 import { prisma } from "@/infrastructure/database/prisma";
 import { ReturnOrderService } from "@/domains/returns/services/return-order-service";
@@ -31,14 +31,66 @@ let uomId: string;
 let warehouseId: string;
 let customerId: string;
 
+const created = { salesOrderIds: [] as string[], returnOrderIds: [] as string[] };
+
+/**
+ * Its OWN product and warehouse.
+ *
+ * This file used to borrow the first demo product and warehouse. Completing a
+ * RESTOCK return calls `CostingService.recordReceipt`, so every run permanently
+ * added value to a demo product's ProductCost row — 0.500 per run. Nothing in
+ * this file noticed, but `valuation-sync-e2e` asserts an absolute organisation
+ * baseline of 600.750, so from the third consecutive run on one database its
+ * `beforeAll` failed and all eight of its tests SKIPPED. A skipped suite still
+ * reads as green in the summary line.
+ */
 beforeAll(async () => {
   const prod = await prisma.product.findFirstOrThrow({ where: { organizationId: ORG } });
-  const wh = await prisma.warehouse.findFirstOrThrow({ where: { organizationId: ORG } });
   const cust = await prisma.customer.findFirstOrThrow({ where: { organizationId: ORG } });
-  productId = prod.id;
+  const category = await prisma.category.findFirst({ where: { organizationId: ORG } });
+  const tag = Math.random().toString(36).slice(2, 8);
+
   uomId = prod.unitOfMeasureId;
-  warehouseId = wh.id;
   customerId = cust.id;
+
+  const isolated = await prisma.product.create({
+    data: {
+      organizationId: ORG, sku: `DUPFX-${tag}`, name: `Duplicate Lines Product ${tag}`,
+      unitOfMeasureId: uomId, categoryId: category?.id ?? null, status: "ACTIVE",
+    },
+  });
+  const warehouse = await prisma.warehouse.create({
+    data: { organizationId: ORG, code: `DUP-${tag}`.slice(0, 20), name: `Duplicate Lines WH ${tag}` },
+  });
+
+  productId = isolated.id;
+  warehouseId = warehouse.id;
+});
+
+afterAll(async () => {
+  if (!productId) return;
+  const where = { productId };
+
+  const txIds = (
+    await prisma.inventoryTransactionLine.findMany({ where, select: { transactionId: true } })
+  ).map((l) => l.transactionId);
+
+  await prisma.inventoryLedgerEntry.deleteMany({ where });
+  await prisma.inventoryTransactionLine.deleteMany({ where });
+  await prisma.inventoryTransaction.deleteMany({ where: { id: { in: txIds } } });
+  await prisma.productCost.deleteMany({ where });
+
+  await prisma.creditNoteLine.deleteMany({ where });
+  await prisma.creditNote.deleteMany({ where: { organizationId: ORG, returnOrderId: { in: created.returnOrderIds } } });
+  await prisma.returnOrderLine.deleteMany({ where: { returnOrderId: { in: created.returnOrderIds } } });
+  await prisma.returnOrder.deleteMany({ where: { id: { in: created.returnOrderIds } } });
+  await prisma.shipmentLine.deleteMany({ where });
+  await prisma.shipment.deleteMany({ where: { salesOrderId: { in: created.salesOrderIds } } });
+  await prisma.salesOrderLine.deleteMany({ where: { salesOrderId: { in: created.salesOrderIds } } });
+  await prisma.salesOrder.deleteMany({ where: { id: { in: created.salesOrderIds } } });
+
+  await prisma.product.deleteMany({ where: { id: productId } });
+  await prisma.warehouse.deleteMany({ where: { id: warehouseId } });
 });
 
 /** 100 NORMAL + 10 FREE_SAMPLE of the same product, both fully shipped. */
@@ -70,6 +122,7 @@ async function makePaidPlusFreeOrder() {
     },
     include: { lines: { orderBy: { lineNumber: "asc" } } },
   });
+  created.salesOrderIds.push(so.id);
 
   // A delivered shipment is required before a return may be created.
   await prisma.shipment.create({
@@ -99,6 +152,7 @@ describe("returns against an order with duplicate product lines", () => {
     const rLine = await prisma.returnOrderLine.findFirstOrThrow({
       where: { returnOrderId: returnOrder.id },
     });
+    created.returnOrderIds.push(returnOrder.id);
 
     await service.receive(ctx, returnOrder.id, [
       { lineId: rLine.id, receivedQuantity: 5, condition: "GOOD" },
@@ -141,6 +195,7 @@ describe("returns against an order with duplicate product lines", () => {
     const firstLine = await prisma.returnOrderLine.findFirstOrThrow({
       where: { returnOrderId: first.id },
     });
+    created.returnOrderIds.push(first.id);
     await service.receive(ctx, first.id, [
       { lineId: firstLine.id, receivedQuantity: 5, condition: "GOOD" },
     ]);
@@ -154,6 +209,7 @@ describe("returns against an order with duplicate product lines", () => {
       customerId, salesOrderId: so.id, reason: "DAMAGED",
       lines: [{ productId, unitOfMeasureId: uomId, expectedQuantity: 105, unitPrice: 0.3 }],
     } as never);
+    created.returnOrderIds.push(second.id);
 
     expect(second.id).toBeTruthy();
   });

@@ -772,7 +772,26 @@ export class InventoryReportService extends BaseReportRepository {
       orderBy: { id: "asc" },
     });
 
-    const soLineToShipmentLine = new Map(shipmentLines.map((sl) => [sl.salesOrderLineId, sl]));
+    /**
+     * ALL shipment lines for each sales-order line, not just one.
+     *
+     * This was `new Map(shipmentLines.map((sl) => [sl.salesOrderLineId, sl]))`.
+     * A Map keeps the LAST entry for a repeated key, and an order line
+     * fulfilled across several despatches legitimately has one shipment line
+     * per consignment — so every consignment but the last was dropped from
+     * COGS. The error understated cost and therefore OVERSTATED gross profit,
+     * which is the direction that does not look wrong on the report.
+     *
+     * Only one active invoice may exist per sales order, so pooling every
+     * consignment onto that order line's invoice line cannot double-count.
+     */
+    const soLineToShipmentLines = new Map<string, typeof shipmentLines>();
+    for (const sl of shipmentLines) {
+      const arr = soLineToShipmentLines.get(sl.salesOrderLineId) ?? [];
+      arr.push(sl);
+      soLineToShipmentLines.set(sl.salesOrderLineId, arr);
+    }
+
     const shipmentIds = [...new Set(shipmentLines.map((sl) => sl.shipmentId))];
 
     const shipmentLinesByShipment = new Map<string, typeof shipmentLines>();
@@ -891,8 +910,8 @@ export class InventoryReportService extends BaseReportRepository {
       const revenue = this.toNumber(il.totalPrice) - (creditByInvoiceLine.get(il.id) ?? 0);
       let cogs = 0;
 
-      const shipmentLine = soLineToShipmentLine.get(il.salesOrderLineId);
-      if (shipmentLine) {
+      // Sum every consignment of this order line, not just one of them.
+      for (const shipmentLine of soLineToShipmentLines.get(il.salesOrderLineId) ?? []) {
         const linesInShipment = shipmentLinesByShipment.get(shipmentLine.shipmentId) ?? [];
         const position = linesInShipment.findIndex((sl) => sl.id === shipmentLine.id);
         if (position !== -1) {
@@ -901,7 +920,7 @@ export class InventoryReportService extends BaseReportRepository {
             const linesInTx = txLinesByTx.get(txId) ?? [];
             const matchedTxLine = linesInTx[position];
             if (matchedTxLine) {
-              cogs = costByTxLine.get(matchedTxLine.id) ?? 0;
+              cogs += costByTxLine.get(matchedTxLine.id) ?? 0;
             }
           }
         }
