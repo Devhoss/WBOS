@@ -12,7 +12,7 @@ export async function GET(
     const { token } = await params;
     const payload = verifyDownloadToken(token);
 
-    if (!payload) {
+    if (!payload || payload.kind !== "invoice") {
       return NextResponse.json({ error: "Invalid or expired download link" }, { status: 403 });
     }
 
