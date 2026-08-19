@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { prisma } from "@/infrastructure/database/prisma";
 
 export async function GET(
@@ -8,7 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ soId: string }> },
 ) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const { soId } = await params;
 
     const order = await prisma.salesOrder.findFirst({
@@ -31,7 +33,9 @@ export async function DELETE(
   { params }: { params: Promise<{ soId: string }> },
 ) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const { soId } = await params;
 
     const order = await prisma.salesOrder.findFirst({

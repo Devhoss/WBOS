@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/infrastructure/database/prisma";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessCalendar } from "@/lib/business-calendar";
 import type { TaskStatus, ShipmentStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const calendar = new BusinessCalendar(context.organization.timezone);
     const todayStart = calendar.startOfTodayUTC();
 

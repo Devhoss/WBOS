@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { prisma } from "@/infrastructure/database/prisma";
 
 export async function GET(req: NextRequest) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const orders = await prisma.salesOrder.findMany({
       where: {
         organizationId: context.organizationId,

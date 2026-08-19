@@ -4,13 +4,10 @@ import { existsSync } from "fs";
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessError } from "@/shared/errors/business-error";
-
-const STORAGE_ROOT =
-  process.env.WBOS_STORAGE_ROOT ?? join(process.cwd(), "public");
-
-const FALLBACK_ROOT = join(process.cwd(), "public");
+import { STORAGE_ROOT, PUBLIC_ROOT as FALLBACK_ROOT } from "@/infrastructure/storage/storage-root";
+import { SIGNED_INVOICE_PREFIX } from "@/domains/sales/signed-invoice-storage";
 
 const MIME_TYPES: Record<string, string> = {
   png: "image/png",
@@ -20,9 +17,10 @@ const MIME_TYPES: Record<string, string> = {
   svg: "image/svg+xml",
   webp: "image/webp",
   ico: "image/x-icon",
+  pdf: "application/pdf",
 };
 
-/** Marks the tenant-private subtree. Everything under it requires ownership. */
+/** Marks the tenant-private subtrees. Everything under them requires ownership. */
 const ATTACHMENT_PREFIX = `uploads${sep}attachments${sep}`;
 
 /**
@@ -80,14 +78,40 @@ export async function GET(
   // Storage-relative key, e.g. "uploads/attachments/<org>/<type>/<id>/<file>".
   const relativeKey = filePath.slice(owningRoot.length + 1);
   const isAttachment = relativeKey.startsWith(ATTACHMENT_PREFIX);
+  const isSignedInvoice = relativeKey.startsWith(SIGNED_INVOICE_PREFIX);
+
+  if (isSignedInvoice) {
+    // A customer's signed proof of delivery. Same rule as an attachment: prove
+    // a session, then prove this organization owns the file.
+    let organizationId: string;
+    try {
+      const auth = await apiContext(request.headers);
+      if (!auth.ok) return new NextResponse(null, { status: 401 });
+      organizationId = auth.context.organizationId;
+    } catch {
+      return new NextResponse(null, { status: 401 });
+    }
+
+    const storagePath = `/api/uploads/${relativeKey.split(sep).join("/")}`;
+    const owned = await prisma.salesOrder.findFirst({
+      where: { organizationId, signedInvoicePath: storagePath, archivedAt: null },
+      select: { id: true },
+    });
+
+    // Indistinguishable from missing, so the endpoint cannot be used to probe
+    // for another organization's documents.
+    if (!owned) {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
 
   if (isAttachment) {
     // Tenant-private: require a session AND prove this org owns the file.
     let organizationId: string;
     try {
-      const context = await new AuthenticatedRequestContextService().getCurrentContext(
-        request.headers,
-      );
+      const auth = await apiContext(request.headers);
+      if (!auth.ok) return auth.response;
+      const context = auth.context;
       organizationId = context.organizationId;
     } catch (error) {
       if (error instanceof BusinessError) {

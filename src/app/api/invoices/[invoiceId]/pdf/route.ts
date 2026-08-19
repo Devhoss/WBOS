@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { InvoiceRepository } from "@/domains/sales/repositories/invoice-repository";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { generateDownloadToken } from "@/lib/download/signed-token";
 import { generatePdfFromUrl } from "@/lib/pdf/printer";
 import { BusinessError } from "@/shared/errors/business-error";
@@ -13,9 +13,9 @@ export async function GET(
   const { invoiceId } = await params;
 
   try {
-    const context =
-      await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const invoice = await new InvoiceRepository().findById(context.organizationId, invoiceId);
 
     if (!invoice) {

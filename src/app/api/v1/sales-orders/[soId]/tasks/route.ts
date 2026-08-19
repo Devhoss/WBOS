@@ -5,7 +5,7 @@ import { SalesOrderRepository } from "@/domains/sales/repositories/sales-order-r
 import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
 import { TaskDomainService } from "@/domains/tasks/services/task-domain-service";
 import { requireManager } from "@/infrastructure/authorization/rbac";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 const domain = new TaskDomainService();
@@ -17,7 +17,9 @@ export async function POST(
   { params }: { params: Promise<{ soId: string }> },
 ) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const { soId } = await params;
     const body = await req.json().catch(() => ({}));
 

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { AttachmentService } from "@/domains/attachments/services/attachment-service";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
-    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(request.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const { attachment, data } = await new AttachmentService().getFile(context, id);
 
     const body = new Uint8Array(data);

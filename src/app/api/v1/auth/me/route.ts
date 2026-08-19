@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 
 export async function GET(req: NextRequest) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const limited = accountRateLimitOrNull(context.userId, "auth-me");
     if (limited) return limited;
 

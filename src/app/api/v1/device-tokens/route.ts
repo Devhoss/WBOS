@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 
@@ -14,7 +14,9 @@ function maskToken(token: string): string {
 export async function POST(req: NextRequest) {
   let context;
   try {
-    context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    context = auth.context;
   } catch (err) {
     console.warn("[device-tokens] POST rejected: authentication failed", (err as Error).message ?? err);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,7 +79,9 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   let context;
   try {
-    context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    context = auth.context;
   } catch (err) {
     console.warn("[device-tokens] DELETE rejected: authentication failed", (err as Error).message ?? err);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

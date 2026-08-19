@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
   let context;
   try {
-    context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    context = auth.context;
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

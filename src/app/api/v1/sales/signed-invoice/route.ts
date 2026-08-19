@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { prisma } from "@/infrastructure/database/prisma";
 import { uid } from "@/lib/uid";
+import { STORAGE_ROOT } from "@/infrastructure/storage/storage-root";
+import {
+  signedInvoicePath,
+  signedInvoiceStorageDir,
+  warnIfStorageRootIsPublic,
+} from "@/domains/sales/signed-invoice-storage";
 
 const allowedMimeTypes = new Set(["application/pdf", "image/jpeg", "image/png"]);
 const maxSize = 10 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const limited = accountRateLimitOrNull(context.userId, "signed-invoice-upload");
     if (limited) return limited;
 
@@ -47,15 +54,20 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const uploadDir = join(process.cwd(), "public", "uploads");
+    // Storage root, not `public/` -- see signed-invoice-storage.ts.
+    warnIfStorageRootIsPublic(STORAGE_ROOT);
+    const uploadDir = signedInvoiceStorageDir(STORAGE_ROOT, context.organizationId);
+    await mkdir(uploadDir, { recursive: true });
     await writeFile(join(uploadDir, fileName), buffer);
+
+    const path = signedInvoicePath(context.organizationId, fileName);
 
     await prisma.salesOrder.update({
       where: { id: salesOrderId },
-      data: { signedInvoicePath: `/uploads/${fileName}` },
+      data: { signedInvoicePath: path },
     });
 
-    return NextResponse.json({ ok: true, path: `/uploads/${fileName}` });
+    return NextResponse.json({ ok: true, path });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

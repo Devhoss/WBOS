@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 
 export async function GET(req: NextRequest) {
-  const { organizationId } = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+  const auth = await apiContext(req.headers);
+  if (!auth.ok) return auth.response;
+  const { organizationId } = auth.context;
 
   const products = await prisma.product.findMany({
     where: { organizationId, archivedAt: null },

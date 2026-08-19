@@ -5,18 +5,20 @@ import { join, basename } from "node:path";
 import { NextResponse } from "next/server";
 
 import { requireOwner } from "@/infrastructure/authorization/rbac";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 import { BACKUP_PACKAGE_PREFIX } from "@/domains/backups/backup-format";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ fileName: string }> },
 ) {
   try {
     const { fileName } = await params;
-    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(request.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     requireOwner(context);
 
     if (!fileName.startsWith(BACKUP_PACKAGE_PREFIX) || !fileName.endsWith(".tar.gz") || fileName !== basename(fileName)) {

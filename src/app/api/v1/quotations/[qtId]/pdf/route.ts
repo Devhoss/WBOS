@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessSettingsRepository } from "@/domains/settings/repositories/business-settings-repository";
 import { generatePdfFromHtml } from "@/lib/pdf/printer";
 import { quotationPdfHtml } from "@/lib/pdf/quotation-pdf-html";
@@ -14,8 +14,9 @@ export async function GET(
   const { qtId } = await params;
 
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const [quotation, settings] = await Promise.all([
       prisma.quotation.findFirst({
         where: { id: qtId, organizationId: context.organizationId },

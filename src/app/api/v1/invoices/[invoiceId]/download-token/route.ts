@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { InvoiceRepository } from "@/domains/sales/repositories/invoice-repository";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { generateDownloadToken } from "@/lib/download/signed-token";
 import { BusinessError } from "@/shared/errors/business-error";
@@ -12,8 +12,9 @@ export async function POST(
 ) {
   try {
     const { invoiceId } = await params;
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
-
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const limited = accountRateLimitOrNull(context.userId, "invoice-download-token");
     if (limited) return limited;
 

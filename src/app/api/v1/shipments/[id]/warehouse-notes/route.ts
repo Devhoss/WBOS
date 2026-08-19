@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/infrastructure/database/prisma";
 import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { requireManager } from "@/infrastructure/authorization/rbac";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { accountRateLimitOrNull } from "@/infrastructure/rate-limit/enforce";
 import { BusinessError } from "@/shared/errors/business-error";
 
@@ -13,7 +14,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext();
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
+    // Parity with the server action path, which has always guarded this.
+    requireManager(context);
     const { id } = await params;
 
     const limited = accountRateLimitOrNull(context.userId, "shipment-warehouse-notes");

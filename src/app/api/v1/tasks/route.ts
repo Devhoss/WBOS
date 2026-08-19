@@ -2,14 +2,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { TaskApplicationService } from "@/domains/tasks/services/task-application-service";
-import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
+import { apiContext } from "@/infrastructure/request/api-context";
 import { BusinessError } from "@/shared/errors/business-error";
 
 const app = new TaskApplicationService();
 
 export async function GET(req: NextRequest) {
   try {
-    const context = await new AuthenticatedRequestContextService().getCurrentContext(req.headers);
+    const auth = await apiContext(req.headers);
+    if (!auth.ok) return auth.response;
+    const context = auth.context;
     const { searchParams } = new URL(req.url);
 
     const statusParam = searchParams.get("status");
