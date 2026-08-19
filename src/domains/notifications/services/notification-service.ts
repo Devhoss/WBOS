@@ -32,7 +32,10 @@ function toPayload(type: string, link: string | null | undefined): PushPayload {
       return { type, entityType: "task", entityId: link ?? "" };
     case "SHIPMENT_READY":
     case "DELIVERY_COMPLETED":
-      return { type, entityType: "shipment", entityId: link ?? "" };
+      // `link` is the pick TASK for the shipment, not the shipment id. It used
+      // to be the shipment id while the client navigated to /picking/<link>,
+      // so every one of these opened "Pick Order Not Found".
+      return { type, entityType: link ? "task" : "none", entityId: link ?? "" };
     default:
       return { type, entityType: "unknown", entityId: link ?? "" };
   }

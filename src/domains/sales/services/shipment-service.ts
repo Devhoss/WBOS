@@ -7,6 +7,8 @@ import { InventoryPostingService } from "@/domains/inventory/services/inventory-
 import { StockBalanceService } from "@/domains/inventory/services/stock-balance-service";
 import { ProductRepository } from "@/domains/products/repositories/product-repository";
 import { WarehouseRepository } from "@/domains/warehouses/repositories/warehouse-repository";
+import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
+import { officeRecipients } from "@/domains/notifications/services/notification-recipients";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { AuthenticatedRequestContext } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
@@ -468,6 +470,8 @@ export class ShipmentService {
         },
       });
     }
+
+    await this.notifyShipmentTransition(context, shipment, "DELIVERED");
   }
 
   private validTransitions: Record<string, string[]> = {
@@ -515,6 +519,75 @@ export class ShipmentService {
       summary: `Shipment ${shipment.shipmentNumber} status changed to ${status} by ${context.user.name}.`,
       metadata: { shipmentNumber: shipment.shipmentNumber, previousStatus: shipment.status, newStatus: status },
     });
+
+    if (status === "LOADED") {
+      await this.notifyShipmentTransition(context, shipment, "LOADED");
+    }
+  }
+
+  /**
+   * Fire the workflow notification for a shipment transition.
+   *
+   * This used to live in the two web server actions, so the REST routes the
+   * mobile app calls -- which is how every real Mark Loaded and Deliver
+   * actually happens -- changed the status and told nobody. `SHIPMENT_READY`
+   * and `DELIVERY_COMPLETED` effectively never fired in production. Emitting
+   * from the service means both doors behave the same.
+   *
+   * The link resolves to the pick TASK, not the shipment. Both notification
+   * types carried `link: shipment.id`, and mobile navigates every notification
+   * to /picking/<link> -- so tapping one asked the API for a pick task whose id
+   * was a shipment id and landed the worker on "Pick Order Not Found".
+   *
+   * Recipients come from the organization's OWNER/MANAGER membership minus the
+   * actor -- see notification-recipients.ts. Previously the only recipient was
+   * the actor, so the warehouse user notified himself and the office was never
+   * told.
+   */
+  private async notifyShipmentTransition(
+    context: AuthenticatedRequestContext,
+    shipment: { id: string; shipmentNumber: string },
+    event: "LOADED" | "DELIVERED",
+  ): Promise<void> {
+    try {
+      const [order, task] = await Promise.all([
+        prisma.shipment.findFirst({
+          where: { id: shipment.id, organizationId: context.organizationId },
+          select: { salesOrder: { select: { soNumber: true } } },
+        }),
+        prisma.task.findFirst({
+          where: {
+            organizationId: context.organizationId,
+            type: "PICK_ORDER",
+            data: { path: ["shipmentId"], equals: shipment.id },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+      const ref = {
+        shipmentNumber: shipment.shipmentNumber,
+        soNumber: order?.salesOrder?.soNumber ?? null,
+        // No task means nothing sensible to open; mobile leaves it unlinked
+        // rather than navigating somewhere that cannot resolve.
+        link: task?.id ?? null,
+      };
+
+      // The office hears about this, not the person who did it. One
+      // notification per eligible recipient, using the existing per-user model.
+      const recipients = await officeRecipients(context.organizationId, context.userId);
+      if (recipients.length === 0) return;
+
+      const notifications = createNotificationService();
+      for (const userId of recipients) {
+        const ctx = { organizationId: context.organizationId, userId };
+        if (event === "LOADED") await notifications.notifyShipmentReady(ctx, ref);
+        else await notifications.notifyDeliveryCompleted(ctx, ref);
+      }
+    } catch (error) {
+      // A notification failure must never roll back a delivery.
+      console.error(`[shipment] Failed to notify ${event} for ${shipment.id}:`, error);
+    }
   }
 
   private async setStatus(context: AuthenticatedRequestContext, shipment: { id: string; shipmentNumber: string; status: string }, status: string) {

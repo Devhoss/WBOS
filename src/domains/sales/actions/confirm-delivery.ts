@@ -5,8 +5,6 @@ import { revalidatePath } from "next/cache";
 import { requireManager } from "@/infrastructure/authorization/rbac";
 import { AuthenticatedRequestContextService } from "@/infrastructure/request/authenticated-request-context";
 import { BusinessError } from "@/shared/errors/business-error";
-import { createNotificationService } from "@/domains/notifications/services/create-notification-service";
-import { ShipmentRepository } from "@/domains/sales/repositories/shipment-repository";
 
 import { ShipmentService } from "../services/shipment-service";
 import { shipmentStatusActionSchema } from "../validation/shipment-schema";
@@ -28,13 +26,8 @@ export async function confirmDeliveryAction(input: unknown) {
 
     await new ShipmentService().deliver(context, parsed.data.id);
 
-    const shipment = await new ShipmentRepository().findById(context.organizationId, parsed.data.id);
-    if (shipment) {
-      await createNotificationService().notifyDeliveryCompleted(
-        { organizationId: context.organizationId, userId: context.userId },
-        { shipmentNumber: shipment.shipmentNumber, soNumber: shipment.salesOrder?.soNumber, link: shipment.id },
-      );
-    }
+    // The notification now fires inside ShipmentService, so the REST route
+    // the mobile app uses emits it too. Emitting here as well would double it.
 
     revalidatePath("/sales");
     revalidatePath("/sales/shipments");
