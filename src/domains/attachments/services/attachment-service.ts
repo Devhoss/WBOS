@@ -14,6 +14,8 @@ export type UploadAttachmentInput = {
   mimeType: string;
   data: Buffer;
   attachmentType?: AttachmentType;
+  sortOrder?: number;
+  contentHash?: string;
 };
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
@@ -48,6 +50,8 @@ export class AttachmentService {
       attachmentType: input.attachmentType ?? "OTHER",
       provider: provider.name,
       storageKey,
+      sortOrder: input.sortOrder ?? 0,
+      contentHash: input.contentHash,
     });
 
     return {
@@ -60,8 +64,14 @@ export class AttachmentService {
     context: AuthenticatedRequestContext,
     entityType: string,
     entityId: string,
+    options?: { attachmentType?: AttachmentType; orderBySortOrder?: boolean },
   ) {
-    const rows = await this.attachments.listByEntity(context.organizationId, entityType, entityId);
+    const rows = await this.attachments.listByEntity(
+      context.organizationId,
+      entityType,
+      entityId,
+      options,
+    );
     const provider = this.providers.get("LOCAL");
 
     return rows.map((row) => ({

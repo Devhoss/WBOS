@@ -21,6 +21,8 @@ import { SalesOrderActions } from "./sales-order-actions";
 import { SalesOrderInvoiceAction } from "./sales-order-invoice-action";
 import { SalesOrderCreatePickTask } from "./sales-order-create-pick-task";
 import { SignedInvoiceUpload } from "./signed-invoice-upload";
+import { ProofOfDeliverySection } from "./proof-of-delivery-section";
+import { ProofOfDeliveryService } from "@/domains/sales/services/proof-of-delivery-service";
 import { TaskRepository } from "@/domains/tasks/repositories/task-repository";
 import { getEntityTimeline } from "@/app/entity-timeline";
 import { DocumentTimeline } from "@/app/document-timeline";
@@ -112,6 +114,15 @@ export default async function SalesOrderDetailPage({
     order.status === "READY_FOR_INVOICE" ||
     order.status === "INVOICED";
   const hasDeliveredShipment = order.shipments.some((s) => s.status === "DELIVERED");
+
+  // Proof of delivery hangs off the delivery, so it only appears once the order
+  // has one. Orders with no shipment fall back to the single-file signed
+  // invoice control, which is all that existed before and still serves the rows
+  // already using it.
+  const proofOfDelivery =
+    order.shipments.length > 0 || order.signedInvoicePath
+      ? await new ProofOfDeliveryService().listForSalesOrder(context, soId)
+      : null;
 
   return (
     <AppShell>
@@ -387,7 +398,11 @@ export default async function SalesOrderDetailPage({
               </section>
             ) : null}
 
-            {(order.signedInvoicePath || hasDeliveredShipment) ? (
+            {proofOfDelivery ? (
+              <section className="no-print">
+                <ProofOfDeliverySection initial={proofOfDelivery} />
+              </section>
+            ) : (order.signedInvoicePath || hasDeliveredShipment) ? (
               <section className="no-print">
                 <SignedInvoiceUpload soId={soId} signedInvoicePath={order.signedInvoicePath} />
               </section>

@@ -8,9 +8,14 @@ const TOKEN_TTL_MS = 5 * 60 * 1000;
  * minted before it existed still verify, and absent means "invoice" -- the only
  * thing these tokens used to unlock.
  */
-export type TokenKind = "invoice" | "signed-invoice";
+export type TokenKind = "invoice" | "signed-invoice" | "pod-document";
 
 export type TokenPayload = {
+  /**
+   * The resource the token unlocks. Named for the only thing it used to name;
+   * `kind` says what it actually points at, and a token minted for one kind
+   * cannot fetch another.
+   */
   invoiceId: string;
   organizationId: string;
   exp: number;

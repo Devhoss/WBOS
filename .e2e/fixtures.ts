@@ -35,6 +35,8 @@ export type FixtureTracker = {
   returnOrder: (id: string) => string;
   purchaseOrder: (id: string) => string;
   task: (id: string) => string;
+  /** An organization created by the suite. Removed last, after its rows. */
+  organization: (id: string) => string;
   /** Delete everything recorded, children first. Safe to call more than once. */
   cleanup: () => Promise<void>;
 };
@@ -49,6 +51,7 @@ export function createFixtureTracker(): FixtureTracker {
   const returnOrderIds: string[] = [];
   const purchaseOrderIds: string[] = [];
   const taskIds: string[] = [];
+  const organizationIds: string[] = [];
 
   /** Record and return, so a tracker call can wrap the id inline. */
   const push = (into: string[]) => (id: string) => {
@@ -131,6 +134,18 @@ export function createFixtureTracker(): FixtureTracker {
       await prisma.productCost.deleteMany({ where });
     }
 
+    // ── Attachments ───────────────────────────────────────────────────────
+    // Proof-of-delivery pages hang off a shipment by `entityType`/`entityId`,
+    // which are loose strings rather than a foreign key — so nothing in the
+    // database stops them outliving the shipment they describe. They also hold
+    // a real FK to Organization with onDelete: Restrict, which would block a
+    // suite from removing an organization it created.
+    if (allShipmentIds.length > 0) {
+      await prisma.attachment.deleteMany({
+        where: { entityType: "SHIPMENT", entityId: { in: allShipmentIds } },
+      });
+    }
+
     // ── Sales documents ───────────────────────────────────────────────────
     if (allShipmentIds.length > 0) {
       await prisma.shipmentLine.deleteMany({ where: { shipmentId: { in: allShipmentIds } } });
@@ -164,6 +179,9 @@ export function createFixtureTracker(): FixtureTracker {
     if (customerIds.length > 0) {
       await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
     }
+    if (organizationIds.length > 0) {
+      await prisma.organization.deleteMany({ where: { id: { in: organizationIds } } });
+    }
 
     productIds.length = 0;
     warehouseIds.length = 0;
@@ -174,6 +192,7 @@ export function createFixtureTracker(): FixtureTracker {
     returnOrderIds.length = 0;
     purchaseOrderIds.length = 0;
     taskIds.length = 0;
+    organizationIds.length = 0;
   }
 
   return {
@@ -186,6 +205,7 @@ export function createFixtureTracker(): FixtureTracker {
     returnOrder: push(returnOrderIds),
     purchaseOrder: push(purchaseOrderIds),
     task: push(taskIds),
+    organization: push(organizationIds),
     cleanup,
   };
 }

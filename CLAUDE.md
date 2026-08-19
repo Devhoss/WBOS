@@ -87,6 +87,8 @@ src/
 
 **Dashboard/Executive aggregation:** For dashboards that need direct Prisma aggregation (bypassing the repository layer for performance), follow the `DashboardService` pattern — direct `prisma.*` queries with the same WHERE filters as the domain services, accepting `organizationId` as a parameter.
 
+**Proof of delivery:** Signed delivery paperwork is many photographed pages, and the set belongs to the **shipment**, not the sales order — an order shipped twice has two signatures covering two drops. Pages are `Attachment` rows with `attachmentType = PROOF_OF_DELIVERY` and `entityType = "SHIPMENT"`, ordered by `sortOrder`. Do **not** add a second document store: `/api/uploads/[...path]` already proves organization ownership for the `uploads/attachments/` subtree and answers 404 rather than 403 so it cannot be used to probe another tenant. `Attachment.contentHash` plus a partial unique index (live rows only) is what makes an upload retry idempotent — a phone that loses the reply re-sends identical bytes. `SalesOrder.signedInvoicePath` is retained for rows that already have one and surfaced separately as `legacySignedInvoicePath`; it is deliberately not backfilled, because those files sit outside the attachments subtree. See `docs/next-feature-proof-of-delivery.md`.
+
 **Status badges:** Use `statusColorClass()` and `formatStatus()` from `@/components/status-colors`. Status values are UPPER_SNAKE_CASE enums (e.g., `FULLY_RECEIVED`, `PARTIALLY_PAID`).
 
 **Decimal values:** All monetary/quantity columns use `Decimal(18, 3)` in Prisma. Convert with `Number(value)` when passing to components. Format KWD with `toLocaleString("en-KW", { minimumFractionDigits: 3, maximumFractionDigits: 3 })`.
@@ -121,14 +123,6 @@ src/
 - `supplierPerformance()` falls back to `supplier.leadTimeDays` when no receipt history exists.
 - E2E fixtures must not mutate demo data. `valuation-sync-e2e` asserts an absolute organisation-wide inventory value of 600.750, so any test that leaves value behind makes its `beforeAll` fail — and a failed `beforeAll` SKIPS the suite, which still reads as green in the summary line. Give a test its own product and warehouse, and tear them down with the shared tracker in `.e2e/fixtures.ts` (`createFixtureTracker()` + `afterAll(() => fixtures.cleanup())`) rather than hand-rolling the delete order — most of these relations are `onDelete: Restrict` and the ledger has to be unwound before the products it references.
 - The `backup-service.test.ts` tests fail on Windows due to tar path resolution (`Cannot connect to C:`). This is a pre-existing environment issue, not a code bug.
-
-## Planned work
-
-- **Multi-page Proof of Delivery** — signed delivery paperwork is photographed
-  page by page, so a delivery needs many authenticated attachments rather than
-  the single `SalesOrder.signedInvoicePath` it has today. Specified but not
-  implemented: see `docs/next-feature-proof-of-delivery.md`, which also records
-  the authenticated storage/download architecture that must be preserved.
 
 ## Documentation
 

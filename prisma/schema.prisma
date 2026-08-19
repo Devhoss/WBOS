@@ -56,6 +56,7 @@ enum AttachmentType {
   BILL_OF_LADING
   INSURANCE
   PAYMENT_RECEIPT
+  PROOF_OF_DELIVERY
   OTHER
 }
 
@@ -1462,6 +1463,16 @@ model Attachment {
   attachmentType AttachmentType  @default(OTHER)
   provider       StorageProvider @default(LOCAL)
   storageKey     String
+  /// Page order within an entity. Proof of delivery is photographed page by
+  /// page, so the set is ordered by intent rather than by upload time -- the
+  /// driver may shoot page 2 first, or add a missing page days later.
+  sortOrder      Int             @default(0)
+  /// SHA-256 of the bytes. Makes an upload retry idempotent: a phone that
+  /// times out after the server already wrote the file re-sends the same
+  /// photo, and without this the delivery grows a duplicate page every time
+  /// the signal drops. A partial unique index enforces it for live rows only,
+  /// so removing a page and re-uploading it still works.
+  contentHash    String?
   createdAt      DateTime        @default(now())
   archivedAt     DateTime?
 
@@ -1469,6 +1480,7 @@ model Attachment {
   uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, entityType, entityId])
+  @@index([organizationId, entityType, entityId, sortOrder])
   @@map("attachments")
 }
 

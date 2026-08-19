@@ -35,6 +35,11 @@ export const AUTH_ACCOUNT_RULES = {
 export const ACCOUNT_RULES = {
   "device-tokens": { limit: 30, windowMs: 60_000 },
   "signed-invoice-upload": { limit: 20, windowMs: 60_000 },
+  // Proof of delivery arrives page by page, and a driver working through a
+  // backlog of deliveries uploads several sets in a row -- higher than the
+  // single-file signed-invoice bucket for that reason.
+  "pod-upload": { limit: 60, windowMs: 60_000 },
+  "pod-mutate": { limit: 60, windowMs: 60_000 },
   "invoice-download-token": { limit: 30, windowMs: 60_000 },
   "shipment-deliver": { limit: 10, windowMs: 60_000 },
   "shipment-status": { limit: 60, windowMs: 60_000 },
